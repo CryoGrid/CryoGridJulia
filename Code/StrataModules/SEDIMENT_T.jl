@@ -1,6 +1,6 @@
 module SEDIMENT_T
 include("../Common/matlab.jl")
-include("../Common/CryoGridConstants.jl")
+include("../StrataModules/CryoGridConstants.jl")
 include("CryoGridTempSaltFunctionalities.jl")
 include("../Common/CryoGridTypes.jl")
 using MAT
@@ -18,7 +18,7 @@ mutable struct stratum
     IA_PREVIOUS #pointer to interaction with previous stata
     IA_NEXT #pointer to interaction with next stratum
 
-    #mandatry functions
+    #mandatory functions
     initialize::Function
     initialize_statvar::Function
     get_boundary_condition_u::Function
@@ -75,6 +75,8 @@ mutable struct stratum
             #calculate resulting flux and save temporary variables for conductivity and spatial derivative calculations
             this.TEMP.T_ub = T_ub; #for conductivity
             this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0); #for spatial derivative
+
+            return this
         end
 
         #boundary conditions for elements in the middle of the stratigrphy are
@@ -84,30 +86,39 @@ mutable struct stratum
         this.get_boundary_condition_l = function(this::stratum)
             #geothermal heat flux prevails
             this.TEMP.heatFlux_lb = this.PARA.heatFlux_lb;
+
+            return this
         end
 
         #calculate spatial derivative
         this.get_derivatives_prognostic = function(this::stratum)
             this.TEMP.divT = get_derivative_temperature_only(this); #this gives a vector
+
+            return this
         end
 
         #get minimal timestep for this stratum element
         this.get_timestep = function(this::stratum)
             courant_number = minimum(0.5 * this.STATVAR.c_eff./this.STATVAR.thermCond[1:end-1] .* (this.STATVAR.layerThick).^2);
             timestep = courant_number/(3600.0*24.0); #convert estimate from seconds to days
+
             return timestep
         end
 
         #calculate advance in time of state variables
         this.advance_prognostic = function(this::stratum, timestep::Float64) #real timestep derived as minimum of several classes in days
             timestep = timestep*3600.0*24.0; #convert timestep from days to seconds
-            this.STATVAR.T = this.STATVAR.T + timestep .* stratum.TEMP.divT;
+            this.STATVAR.T = this.STATVAR.T + timestep .* this.TEMP.divT;
+
+            return this
         end
 
         #calculate diagnostic variable that only happen if this stratum element is the
         #upper element in the stratigraphy
         this.compute_diagnostic_first_cell = function(this::stratum, forcing)
             #marine sedimentation could be happening here
+
+            return this
         end
 
         #calculate diagnostic variables
@@ -116,6 +127,7 @@ mutable struct stratum
             this = CryoGridTempSaltFunctionalities.getThermalProps_noSaltDiffusion(this);
 
             #isostatic movement could happen here
+            return this
         end
 
         return this
@@ -132,7 +144,7 @@ end
 
 function initialize_PARA(this::stratum)
     this = CryoGridConstants.getGlobalPara(this)
-    return stratum
+    return this
 end
 
 function initialize_STATVAR(this::stratum)
@@ -146,11 +158,12 @@ function initialize_STATVAR(this::stratum)
     porosity = 1.80 .* bulkDensity .^ (-1.0) .- 0.6845;
     porosity[porosity .< 0.03] .= 0.03;
 
-    #update state variables
+    #update state variables to be vectors
     this.STATVAR.porosity = porosity;
     this.STATVAR.mineral = this.STATVAR.mineral .* (1.0 .- porosity) ./ (this.STATVAR.mineral .+ this.STATVAR.organic);
     this.STATVAR.organic = this.STATVAR.organic .* (1.0 .- porosity) ./ (this.STATVAR.mineral .+ this.STATVAR.organic);
     this.STATVAR.water = 1.0 .- this.STATVAR.organic .- this.STATVAR.mineral;
+    this.STATVAR.saltConc = this.STATVAR.saltConc .* ones(size(porosity));
 
     #calculate state variables that depend on the more constant ones
     Tmelt, a, b = CryoGridTempSaltFunctionalities.calculateTmelt(this);

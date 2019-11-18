@@ -3,7 +3,7 @@ module CryoGridInputDataSets
     using MAT
 
     function getElevation(Lat::Array{Float64,1}, Lon::Array{Float64,1})
-        file = matopen("../ForcingData/subsea6p25kmCellSize_Shelf.mat")
+        file = matopen("ForcingData/subsea6p25kmCellSize_Shelf.mat")
         data = read(file, "LL6p25km");
 
         zsb = zeros(size(Lat));
@@ -25,7 +25,7 @@ module CryoGridInputDataSets
         Qout = zeros(size(Lat));
 
         #load geothermal data
-    	file = matopen("../ForcingData/Data_HFip.mat") #geothermal heat flux data from Davis et al. (2013, Q3) - data are defined on the same grid as CLIMBER2 SAT and ice sheet data (lon x lat) (240x41)
+    	file = matopen("ForcingData/Data_HFip.mat") #geothermal heat flux data from Davis et al. (2013, Q3) - data are defined on the same grid as CLIMBER2 SAT and ice sheet data (lon x lat) (240x41)
         lat_HFip = read(file, "lat_HFip");
         lon_HFip = read(file, "lon_HFip");
         HFip = read(file, "HFip");

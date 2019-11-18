@@ -5,7 +5,7 @@ module CryoGridTempSaltFunctionalities
     function calculateTmelt(this)
         #calculate Tmelt in K
 
-        file = matopen("lookup_table_fc.mat");
+        file = matopen("StrataModules/lookup_table_fc.mat");
         fc_parameters = read(file, "fc_parameters");
 
         a_sand = matlab.interp1(fc_parameters[:,1], fc_parameters[:,2], this.STATVAR.saltConc, "linear").* this.STATVAR.porosity.^(-1.0);
@@ -44,7 +44,7 @@ module CryoGridTempSaltFunctionalities
         #allocate memory
         T_0 = zeros(size(midpoints));
         #apply forcing to surface
-        T_0[1] = TForcing;
+        T_0[1] = TForcing[1]; #TForcing is a Vector with 1 element
 
 
         @inbounds for i = 2:length(T_0)
@@ -58,12 +58,12 @@ module CryoGridTempSaltFunctionalities
                 liqWater = this.STATVAR.porosity[i];
             end
 
-            thermCond = (liqWater .* sqrt(k_water) + (this.STATVAR.porosity[i] - liqWater) .* sqrt(k_ice) + this.STATVAR.mineral[i]*sqrt(k_mineral) + this.STATVAR.organic[i]*sqrt(k_organic)).^2.0;
+            thermCond = (liqWater .* sqrt.(k_water) + (this.STATVAR.porosity[i] - liqWater) .* sqrt.(k_ice) + this.STATVAR.mineral[i]*sqrt.(k_mineral) + this.STATVAR.organic[i]*sqrt.(k_organic)).^2.0;
 
-        	T_0[i] = T_0[i-1] - 1.0 ./ thermCond.*Q.*(midpoints[i]- midpoints[i-1]);
+        	T_0[i] = T_0[i-1] .- 1.0 ./ thermCond[1] .* Q[1] .* (midpoints[i] .- midpoints[i-1]);
         end
 
-        return T
+        return T_0
     end
 
     function getThermalProps_noSaltDiffusion(this)
@@ -90,7 +90,7 @@ module CryoGridTempSaltFunctionalities
         a = this.PARA.a;
         b = this.PARA.b;
         Tmelt = this.STATVAR.Tmelt; #in Kelvin
-        Tmelt_inDegreeC = Tmelt - 273.15; #convert to °C to compare against temperatures.
+        Tmelt_inDegreeC = Tmelt .- 273.15; #convert to °C to compare against temperatures.
 
         #temperature and upper boundary
         T_ub = this.TEMP.T_ub;
@@ -99,20 +99,21 @@ module CryoGridTempSaltFunctionalities
         #-------------- assign thermal conductivity -------------------------%
         #conductivity lives on the edges
         #interpolate liqWater to the edges
-        layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos - cumsum(this.STATVAR.layerThick)];
+        layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick)];
         thermCond = zeros(length(this.STATVAR.layerThick)+1,1);
+        thermCond = dropdims(thermCond, dims=2);
 
         #calculate for upper boundary
         i = 1;
-        a1 = 1/porosity[i] - a[i]*abs(Tmelt[i])^b[i];
+        a1 = 1.0 ./ porosity[i] - a[i]*abs(Tmelt[i])^b[i];
 
-        if (T_ub + T[i]) / 2.0 <= Tmelt_inDegreeC[i]
-            liqWater = 1.0 / (a1 + a[i]*abs((T_ub + T[i]) / 2.0)^b[i]);
+        if (T_ub[1] .+ T[i]) / 2.0 <= Tmelt_inDegreeC[i]
+            liqWater = 1.0 / (a1 .+ a[i]*abs((T_ub .+ T[i]) / 2.0) .^ b[i]);
         else
             liqWater = porosity[i];
         end
 
-        thermCond[i] = (liqWater*sqrt(k_water) + (porosity[i] - liqWater)*sqrt(k_ice) +           mineral[i]*sqrt(k_mineral) + organic[i]*sqrt(k_organic))* (liqWater*sqrt(k_water) + (porosity[i] - liqWater)*sqrt(k_ice) + mineral[i]*sqrt(k_mineral) + organic[i]*sqrt(k_organic));
+        thermCond[i] = (liqWater[1] .* sqrt.(k_water[1]) .+ (porosity[i] .- liqWater[1]) .* sqrt.(k_ice[1]) .+ mineral[i] .* sqrt.(k_mineral[1]) .+ organic[i] .* sqrt.(k_organic[1])) .^2.0;
 
         #calculate for inner edges
         @inbounds for i = 2:length(layerDepth) - 1
@@ -131,44 +132,44 @@ module CryoGridTempSaltFunctionalities
                 liqWater = (liqWater+porosity[i]) / 2.0;
             end
 
-            thermCond[i] = (liqWater*sqrt(k_water) + ((porosity[i] + porosity[i-1]) / 2.0 - liqWater)*sqrt(k_ice) +  (mineral[i-1] + mineral[i]) / 2.0 *sqrt(k_mineral) + (organic[i-1] + organic[i]) / 2.0 *sqrt(k_organic))*(liqWater*sqrt(k_water) + ((porosity[i] + porosity[i-1]) / 2.0 - liqWater)*sqrt(k_ice) + (mineral[i-1] + mineral[i]) / 2.0 *sqrt(k_mineral) + (organic[i-1]+organic[i]) / 2.0 *sqrt(k_organic));
+            thermCond[i] = (liqWater[1] .* sqrt.(k_water[1]) .+ ((porosity[i] .+ porosity[i-1]) ./ 2.0 .- liqWater[1]) .* sqrt.(k_ice[1]) .+  (mineral[i-1] .+ mineral[i]) ./ 2.0 .* sqrt.(k_mineral[1]) .+ (organic[i-1] .+ organic[i]) ./ 2.0 .* sqrt.(k_organic[1])) .^2.0;
+        end
+
+        #extrapolate for lower edge - this is needed for calculation of
+        #interaction
+        thermCond[i+1] = thermCond[i];
+
+        #------------------ determine bulk conductivity and capacity------%
+        # also save liqWater here
+        #Heat Capacity lives on the midpoints of the cells
+        c_eff = zeros(size(this.STATVAR.layerThick));
+        liqWater = zeros(size(this.STATVAR.layerThick));
+        midptDepth = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
+
+        @inbounds for i = 1:length(midptDepth)
+            a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt[i])^b[i];
+
+            #determine water content
+            if T[i] <= Tmelt_inDegreeC[i]
+                liqWater[i] = 1.0 / (a1 + a[i]*abs(T[i])^b[i]);
+            else
+                liqWater[i] = porosity[i];
             end
 
-            #extrapolate for lower edge - this is needed for calculation of
-            #interaction
-            thermCond[i+1] = thermCond[i];
-
-            #------------------ determine bulk conductivity and capacity------%
-            # also save liqWater here
-            #Heat Capacity lives on the midpoints of the cells
-            c_eff = zeros(size(this.STATVAR.layerThick));
-            liqWater = zeros(size(this.STATVAR.layerThick));
-            midptDepth = this.STATVAR.upperPos - this.STATVAR.layerThick[1] / 2.0 - cumsum(this.STATVAR.layerThick);
-
-            for i = 1:length(midptDepth)
-                a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt[i])^b[i];
-
-                #determine water content
-                if T[i] <= Tmelt_inDegreeC[i]
-                    liqWater[i] = 1.0 / (a1 + a[i]*abs(T[i])^b[i]);
-                else
-                    liqWater[i] = porosity[i];
-                end
-
-                if T[i] <= Tmelt_inDegreeC[i]
-                    d_liqWater = a[i] * b[i] * abs(T[i]^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i])) / (a1 + a[i]*abs(T[i])^b[i]);
-                else
-                    d_liqWater = 0.0;
-                end
-
-                c_eff[i] = c_mineral * mineral[i] + c_water*liqWater[i] + c_ice*(porosity[i]-liqWater[i]) + c_organic*organic[i] +  L_f*d_liqWater;
+            if T[i] <= Tmelt_inDegreeC[i]
+                d_liqWater = a[i] * b[i] * abs(T[i]^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i])) / (a1 + a[i]*abs(T[i])^b[i]);
+            else
+                d_liqWater = 0.0;
             end
 
-            #---------------- update this struct ---------------------------%
-            this.STATVAR.thermCond = thermCond;
-            this.STATVAR.c_eff = c_eff;
-            this.STATVAR.water = liqWater; #argh!!!
-            this.STATVAR.liqWater = liqWater;
+            c_eff[i] = c_mineral[1] * mineral[i] + c_water[1] * liqWater[i] + c_ice[1] * (porosity[i]-liqWater[i]) + c_organic[1] * organic[i] +  L_f[1] * d_liqWater[1];
+        end
+
+        #---------------- update this struct ---------------------------%
+        this.STATVAR.thermCond = thermCond;
+        this.STATVAR.c_eff = c_eff;
+        this.STATVAR.water = liqWater; #argh!!!
+        this.STATVAR.liqWater = liqWater;
 
         return this
     end

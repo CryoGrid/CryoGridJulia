@@ -1,9 +1,9 @@
 module CryoGridInitialization
-include("matlab.jl")
-include("CryoGridConstants.jl")
-include("CryoGridTempSaltFunctionalities.jl")
-include("CryoGridTypes.jl")
-include("SEDIMENT_T.jl")
+include("../Common/matlab.jl")
+include("../StrataModules/CryoGridConstants.jl")
+include("../StrataModules/CryoGridTempSaltFunctionalities.jl")
+include("../Common/CryoGridTypes.jl")
+#include("SEDIMENT_T.jl")
 using MAT
 
     mutable struct Bottom

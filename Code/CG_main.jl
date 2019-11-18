@@ -1,4 +1,5 @@
- # CG_main.jl
+# CG_main
+
 #
 # Main file of CryoGrid, julia version
 #
@@ -28,11 +29,13 @@ include("Common/CryoGridInteractions.jl")
 # forcing variables are currently set in the focing class
 
 
-
 # initialize forcing
 forcing = Forcing_inundationHistory.forcing();
 forcing = forcing.initialize(forcing);
 forcing = forcing.load_forcing_from_mat(forcing);
+
+
+
 
 # initialize stratigraphy
 terrestrial = SEDIMENT_T.stratum();
@@ -60,10 +63,12 @@ BOTTOM = BOTTOM.init_bottom(BOTTOM, terrestrial);
 TOP.NEXT.NEXT= BOTTOM.PREVIOUS;
 BOTTOM.PREVIOUS.PREVIOUS = TOP.NEXT;
 TOP.NEXT.PREVIOUS = [];
-BOTTOM.PREVIOUS.NEXT = [];
+BOTTOM.PREVIOUS.NEXT = BOTTOM;
 
 TOP.NEXT.IA_PREVIOUS = [];
 TOP.NEXT.IA_NEXT = interaction_heat;
+TOP.NEXT.IA_NEXT.PREVIOUS = TOP.NEXT;
+TOP.NEXT.IA_NEXT.NEXT = TOP.NEXT.NEXT;
 BOTTOM.PREVIOUS.IA_PREVIOUS = TOP.NEXT.IA_NEXT;
 BOTTOM.PREVIOUS.IA_NEXT = [];
 
@@ -83,6 +88,12 @@ CURRENT = TOP.NEXT;
 
 #t is in days, timestep should also be in days
 while t <= forcing.PARA.end_time
+    global forcing
+    global CURRENT
+    global TOP
+    global BOTTOM
+    global t
+
 
     forcing = forcing.interpolate_forcing(t, forcing);
     #---------boundary conditions
@@ -95,7 +106,7 @@ while t <= forcing.PARA.end_time
     #function independent of classes, each class must comply with this function
     #evaluated for every interface between two cells/blocks
     while ~isequal(CURRENT.NEXT, BOTTOM)
-        CURRENT.get_boundary_condition_m(CURRENT.IA_NEXT);
+        CURRENT.IA_NEXT.get_boundary_condition_m(CURRENT.IA_NEXT);
         CURRENT = CURRENT.NEXT;
     end
 
@@ -144,13 +155,13 @@ while t <= forcing.PARA.end_time
     BOTTOM_CLASS = BOTTOM.PREVIOUS;
 
     #store the output according to the defined OUT clas
-    out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, run_number);
+    #out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, run_number);
 
     #calculate new time
     t = t + timestep; #./day_sec;
 
-    if out.BREAK == 1
-        break
-    end
+    #if out.BREAK == 1
+    #    break
+    #end
 
 end
