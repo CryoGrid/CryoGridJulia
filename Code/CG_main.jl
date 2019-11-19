@@ -62,7 +62,7 @@ BOTTOM = BOTTOM.init_bottom(BOTTOM, terrestrial);
 
 TOP.NEXT.NEXT= BOTTOM.PREVIOUS;
 BOTTOM.PREVIOUS.PREVIOUS = TOP.NEXT;
-TOP.NEXT.PREVIOUS = [];
+TOP.NEXT.PREVIOUS = TOP;
 BOTTOM.PREVIOUS.NEXT = BOTTOM;
 
 TOP.NEXT.IA_PREVIOUS = [];
@@ -75,7 +75,7 @@ BOTTOM.PREVIOUS.IA_NEXT = [];
 
 #TOP_CLASS = add_CHILD_snow(TOP_CLASS, class_list, stratigraphy_list);
 CURRENT = TOP.NEXT;
-while ~isequal(CURRENT.NEXT, BOTTOM)
+while ~isequal(CURRENT, BOTTOM)
     global CURRENT
     CURRENT.initialize_statvar(CURRENT);
     CURRENT = CURRENT.NEXT;
@@ -130,7 +130,7 @@ while t <= forcing.PARA.end_time
         CURRENT = CURRENT.NEXT;
     end
     #timestep = min(timestep, (out.OUTPUT_TIME-t).*day_sec);
-    timestep = min(timestep, (out.OUTPUT_TIME-t)); #in days!!
+    #timestep = min(timestep, (out.OUTPUT_TIME-t)); #in days!!
     #make sure to hit the output times!
 
     #calculate prognostic variables
@@ -158,8 +158,10 @@ while t <= forcing.PARA.end_time
     #out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, run_number);
 
     #calculate new time
-    t = t + timestep; #./day_sec;
+    t = t .+ timestep; #./day_sec;
 
+    println("current ground temperature")
+    println(TOP.NEXT.STATVAR.T[1])
     #if out.BREAK == 1
     #    break
     #end

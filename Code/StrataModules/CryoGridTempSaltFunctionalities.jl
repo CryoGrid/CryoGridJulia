@@ -28,7 +28,7 @@ module CryoGridTempSaltFunctionalities
         k_organic = this.CONST.k_o;
         k_mineral = this.CONST.k_m;
 
-        if isequal(this.PREVIOUS, [])
+        if ~hasfield(typeof(this.PREVIOUS), :STATVAR)
             TForcing = this.TEMP.T_ub;
         else
             TForcing = this.PREVIOUS.STATVAR.T[length(this.PREVIOUS.STATVAR.T)];

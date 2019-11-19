@@ -83,9 +83,9 @@ mutable struct stratum
         #calculated in the interactions
 
         #get boundary condition if this is the lowest element of the stratigraphy
-        this.get_boundary_condition_l = function(this::stratum)
+        this.get_boundary_condition_l = function(this::stratum, forcing)
             #geothermal heat flux prevails
-            this.TEMP.heatFlux_lb = this.PARA.heatFlux_lb;
+            this.TEMP.heatFlux_lb = forcing.PARA.heatFlux_lb;
 
             return this
         end
@@ -191,8 +191,8 @@ function get_derivative_temperature_only(this::stratum)
                                             #or in the interaction
     T = this.STATVAR.T;
 
-    layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos - cumsum(this.STATVAR.layerThick)];
-    midptDepth = this.STATVAR.upperPos - this.STATVAR.layerThick[1] ./ 2.0 - cumsum(this.STATVAR.layerThick);
+    layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick)];
+    midptDepth = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
 
     #determine bulk capacity and capacity
     c_temp = this.STATVAR.c_eff;
@@ -215,10 +215,11 @@ function get_derivative_temperature_only(this::stratum)
     #T(0) lives not on the midpoint of a ghost-cell,
     #but on the upper edge, hence the different deltaZ
     i = 1;
-    divT[i] = (1.0 / c_temp[i]) * ( #conductivity of cell
-                            thermCond[i+1]*(T[i+1] - T[i]) / abs(midptDepth[i+1] - midptDepth[i]) - #flux lower edge of cell
-                            heatFlux_ub) / #flux upper edge of cell
-                    abs(layerDepth[i+1] - layerDepth[i]); #size of cell
+
+    divT[i] = (1.0 ./ c_temp[i]) * ( #conductivity of cell
+                            thermCond[i+1]*(T[i+1] .- T[i]) ./ abs(midptDepth[i+1] .- midptDepth[i]) .- #flux lower edge of cell
+                            heatFlux_ub[1]) ./ #flux upper edge of cell
+                    abs(layerDepth[i+1] .- layerDepth[i]); #size of cell
 
 
     #derivative for soil
@@ -234,9 +235,9 @@ function get_derivative_temperature_only(this::stratum)
     #thermCond(N+1) is implicitely given in Q
     i = length(midptDepth);
     divT[i] = (1.0 / c_temp[i])*(
-                            Q - #flux lower edge
-                            thermCond[i] * (T[i] - T[i-1]) / abs(midptDepth[i] - midptDepth[i-1])) / #flux upper edge
-                            abs(layerDepth[i+1] - layerDepth[i]); #size of cell
+                            Q[1] .- #flux lower edge
+                            thermCond[i] .* (T[i] .- T[i-1]) ./ abs(midptDepth[i] .- midptDepth[i-1])) ./ #flux upper edge
+                            abs(layerDepth[i+1] .- layerDepth[i]); #size of cell
 
     return divT
 end
