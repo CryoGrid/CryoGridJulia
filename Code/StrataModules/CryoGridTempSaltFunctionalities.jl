@@ -157,6 +157,12 @@ module CryoGridTempSaltFunctionalities
             end
 
             if T[i] <= Tmelt_inDegreeC[i]
+                println("T[i]")
+                println(T[i])
+                println("a[i]")
+                println(a[i])
+                println("b[i]")
+                println(b[i])
                 d_liqWater = a[i] * b[i] * abs(T[i]^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i])) / (a1 + a[i]*abs(T[i])^b[i]);
             else
                 d_liqWater = 0.0;

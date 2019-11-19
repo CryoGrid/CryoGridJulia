@@ -1,5 +1,5 @@
 module CryoGridTypes
-export constants, parameter, statvar, temporary, forcingparameter, forcingtemporary, forcingdata, sediment
+export constants, parameter, statvar, temporary, forcingparameter, forcingtemporary, forcingdata, sediment, outparameter, runinfo
 
 #stratigraphy, forcing, statvar, grid, out, para
 
@@ -124,5 +124,37 @@ struct sediment # 4 Array{int64,1}
     organic::Array{Float64,1}
     salinity::Array{Float64,1}
 end
+
+struct outparameter
+    lastDisp::Array{Float64,1}
+    dispInterval::Array{Float64,1}
+    save_time::Array{Float64,1}
+    output_timestep::Array{Float64,1}
+end
+
+struct outtemporary
+    out_time::Array{Float64,1}
+    save_time::Array{Float64,1}
+    out_index::Array{Float64,1}
+end
+
+struct outresults
+    time::Array{Float64,1}
+    depthInterp::Array{Float64,1}
+    T::Array{Float64,2}
+    saltConc::Array{Float64,2}
+    thermCond::Array{Float64,2}
+    c_eff::Array{Float64,2}
+    liqWater::Array{Float64,2}
+end
+
+struct runinfo
+    starttime::Array{Float64,1}
+    endtime::Array{Float64,1}
+    timesteps::Array{Float64,1}
+    dt_min::Array{Float64,1}
+    dt_max::Array{Float64,1}
+end
+
 
 end

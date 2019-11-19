@@ -1,13 +1,12 @@
 module matlab
     using Interpolations
 
-    function interp1(xpt, ypt, x, method)
-        extrapvalue = nothing
+    function interp1(xpt, ypt, x, method, extrapvalue=nothing)
         if extrapvalue == nothing
             y = zeros(size(x))
             idx = trues(size(x))
         else
-            y = extrapvalue*ones(x)
+            y = extrapvalue*ones(size(x))
             idx = (x .>= xpt[1]) .& (x .<= xpt[end])
         end
 

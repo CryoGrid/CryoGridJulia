@@ -1,86 +1,5 @@
-# CG_main
 
-#
-# Main file of CryoGrid, julia version
-#
-# Based on the matlab version by S.Westermann
-#
-#
-#
-# structure of this file
-# 1. load modules and stratum
-# 2. set run variable
-# 3. initialize forcing
-# 4. initialize stratigraphy
-# 5. run time-loop
-# 6. save output
-
-
-# load used modules and stratum
-include("StrataModules/SEDIMENT_T.jl")
-include("ForcingModules/Forcing_inundationHistory.jl")
-include("Common/CryoGridTypes.jl")
-include("Common/CryoGridInitialization.jl")
-include("Common/CryoGridInteractions.jl")
-
-
-# set run variables
-
-# forcing variables are currently set in the focing class
-
-
-# initialize forcing
-forcing = Forcing_inundationHistory.forcing();
-forcing = forcing.initialize(forcing);
-forcing = forcing.load_forcing_from_mat(forcing);
-
-
-
-
-# initialize stratigraphy
-terrestrial = SEDIMENT_T.stratum();
-marine = SEDIMENT_T.stratum();
-
-# sediment has fields soilType, mineral, organic, salinity
-saltysilt = CryoGridTypes.sediment([1], [0.6], [0.0], [890.0]);
-sand = CryoGridTypes.sediment([0], [0.6], [0.0], [0.0]);
-
-marine.initialize(marine, saltysilt);
-terrestrial.initialize(terrestrial, sand);
-
-interaction_heat = CryoGridInteractions.IA_HEAT();
-
-#TODO!
-#assemble the model stratigraphy and define interactions between classes
-#TOP_CLASS, BOTTOM_CLASS, TOP, BOTTOM = assemble_stratigraphy(class_list, stratigraphy_list, grid, forcing);
-
-TOP = CryoGridInitialization.Top();
-TOP = TOP.init_top(TOP, marine);
-
-BOTTOM = CryoGridInitialization.Bottom();
-BOTTOM = BOTTOM.init_bottom(BOTTOM, terrestrial);
-
-TOP.NEXT.NEXT= BOTTOM.PREVIOUS;
-BOTTOM.PREVIOUS.PREVIOUS = TOP.NEXT;
-TOP.NEXT.PREVIOUS = TOP;
-BOTTOM.PREVIOUS.NEXT = BOTTOM;
-
-TOP.NEXT.IA_PREVIOUS = [];
-TOP.NEXT.IA_NEXT = interaction_heat;
-TOP.NEXT.IA_NEXT.PREVIOUS = TOP.NEXT;
-TOP.NEXT.IA_NEXT.NEXT = TOP.NEXT.NEXT;
-BOTTOM.PREVIOUS.IA_PREVIOUS = TOP.NEXT.IA_NEXT;
-BOTTOM.PREVIOUS.IA_NEXT = [];
-
-
-#TOP_CLASS = add_CHILD_snow(TOP_CLASS, class_list, stratigraphy_list);
-CURRENT = TOP.NEXT;
-while ~isequal(CURRENT, BOTTOM)
-    global CURRENT
-    CURRENT.initialize_statvar(CURRENT);
-    CURRENT = CURRENT.NEXT;
-end
-
+function main(TOP, BOTTOM, forcing, out, savename)
 # run time loop
 t = forcing.PARA.start_time;
 
@@ -88,11 +7,13 @@ CURRENT = TOP.NEXT;
 
 #t is in days, timestep should also be in days
 while t <= forcing.PARA.end_time
-    global forcing
-    global CURRENT
-    global TOP
-    global BOTTOM
-    global t
+    #global forcing
+    #global CURRENT
+    #global TOP
+    #global BOTTOM
+    #global t
+    #global out
+    #global savename
 
 
     forcing = forcing.interpolate_forcing(t, forcing);
@@ -130,7 +51,7 @@ while t <= forcing.PARA.end_time
         CURRENT = CURRENT.NEXT;
     end
     #timestep = min(timestep, (out.OUTPUT_TIME-t).*day_sec);
-    #timestep = min(timestep, (out.OUTPUT_TIME-t)); #in days!!
+    timestep = min(timestep, (out.TEMP.out_time[1] - t[1])); #in days!!
     #make sure to hit the output times!
 
     #calculate prognostic variables
@@ -155,15 +76,108 @@ while t <= forcing.PARA.end_time
     BOTTOM_CLASS = BOTTOM.PREVIOUS;
 
     #store the output according to the defined OUT clas
-    #out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, run_number);
+    out = out.store_out(out, t, TOP, BOTTOM, forcing, savename);
 
     #calculate new time
     t = t .+ timestep; #./day_sec;
 
-    println("current ground temperature")
-    println(TOP.NEXT.STATVAR.T[1])
-    #if out.BREAK == 1
-    #    break
-    #end
+    #println("current ground temperature")
+    #println(TOP.NEXT.STATVAR.T[1])
+    if out.BREAK == true
+        t = forcing.PARA.end_time + [1.0] ;
+    end
 
 end
+end
+
+
+
+ # CG_main
+
+#
+# Main file of CryoGrid, julia version
+#
+# Based on the matlab version by S.Westermann
+#
+#
+#
+# structure of this file
+# 1. load modules and stratum
+# 2. set run variable
+# 3. initialize forcing
+# 4. initialize stratigraphy
+# 5. run time-loop
+# 6. save output
+
+
+# load used modules and stratum
+include("StrataModules/SEDIMENT_T.jl")
+include("ForcingModules/Forcing_inundationHistory.jl")
+include("Common/CryoGridTypes.jl")
+include("Common/CryoGridInitialization.jl")
+include("Common/CryoGridInteractions.jl")
+include("Results/OUT_subseaPF.jl")
+
+
+# set run variables
+savename = "test1"
+
+# forcing variables are currently set in the focing class
+# initialize forcing
+forcing = Forcing_inundationHistory.forcing();
+forcing = forcing.initialize(forcing);
+forcing = forcing.load_forcing_from_mat(forcing);
+
+#initialize out
+out = OUT_subseaPF.OUT();
+out = out.initalize_from_file(out);
+out = out.complete_init_out(out, forcing);
+
+
+# initialize stratigraphy
+terrestrial = SEDIMENT_T.stratum();
+marine = SEDIMENT_T.stratum();
+
+# sediment has fields soilType, mineral, organic, salinity
+saltysilt = CryoGridTypes.sediment([1], [0.6], [0.0], [890.0]);
+sand = CryoGridTypes.sediment([0], [0.6], [0.0], [0.0]);
+
+marine.initialize(marine, saltysilt, 0.0, -50.0, 2.0);
+terrestrial.initialize(terrestrial, sand, -51.0, -2000.0, 5.0);
+
+interaction_heat = CryoGridInteractions.IA_HEAT();
+
+#TODO!
+#assemble the model stratigraphy and define interactions between classes
+#TOP_CLASS, BOTTOM_CLASS, TOP, BOTTOM = assemble_stratigraphy(class_list, stratigraphy_list, grid, forcing);
+
+TOP = CryoGridInitialization.Top();
+TOP = TOP.init_top(TOP, marine);
+
+BOTTOM = CryoGridInitialization.Bottom();
+BOTTOM = BOTTOM.init_bottom(BOTTOM, terrestrial);
+
+TOP.NEXT.NEXT= BOTTOM.PREVIOUS;
+BOTTOM.PREVIOUS.PREVIOUS = TOP.NEXT;
+TOP.NEXT.PREVIOUS = TOP;
+BOTTOM.PREVIOUS.NEXT = BOTTOM;
+
+TOP.NEXT.IA_PREVIOUS = [];
+TOP.NEXT.IA_NEXT = interaction_heat;
+TOP.NEXT.IA_NEXT.PREVIOUS = TOP.NEXT;
+TOP.NEXT.IA_NEXT.NEXT = TOP.NEXT.NEXT;
+BOTTOM.PREVIOUS.IA_PREVIOUS = TOP.NEXT.IA_NEXT;
+BOTTOM.PREVIOUS.IA_NEXT = [];
+
+
+#TOP_CLASS = add_CHILD_snow(TOP_CLASS, class_list, stratigraphy_list);
+CURRENT = TOP.NEXT;
+while ~isequal(CURRENT, BOTTOM)
+    global CURRENT
+    CURRENT.initialize_statvar(CURRENT);
+    CURRENT = CURRENT.NEXT;
+end
+
+
+@time main(TOP, BOTTOM, forcing, out, savename)
+#@code_warntype main(TOP, BOTTOM, forcing, out, savename)

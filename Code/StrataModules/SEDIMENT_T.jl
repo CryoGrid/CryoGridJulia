@@ -41,13 +41,17 @@ mutable struct stratum
         this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0])
 
         #initialize stratum
-        this.initialize = function(this::stratum, sedimenttype)
+        this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=vec(2 .*ones(1,500)))
             initialize_CONST(this);
             initialize_PARA(this);
 
-            this.STATVAR.upperPos .= 0;
-            this.STATVAR.lowerPos .= -1000;
-            this.STATVAR.layerThick = vec(2 .*ones(1,500));
+            this.STATVAR.upperPos .= upperPos;
+            this.STATVAR.lowerPos .= lowerPos;
+            if length(layerThick) > 1.0
+                this.STATVAR.layerThick = layerThick;
+            else
+                this.STATVAR.layerThick = dropdims(layerThick .* ones(Int64(floor(abs(lowerPos - upperPos)/layerThick)) - 1, 1), dims=2)
+            end
 
             this.STATVAR.soilType .= sedimenttype.soilType;
             this.STATVAR.mineral .= sedimenttype.mineral;
@@ -170,6 +174,9 @@ function initialize_STATVAR(this::stratum)
     this.STATVAR.Tmelt = Tmelt; #in Kelvin!
     this.PARA.a = a;
     this.PARA.b = b;
+
+    #drop one element of saltConc so that it has the same dimension as T
+    this.STATVAR.saltConc = this.STATVAR.saltConc[1:end-1];
 
     #Calculate initial condition T0
     T = CryoGridTempSaltFunctionalities.steadyState(this); #steady state
