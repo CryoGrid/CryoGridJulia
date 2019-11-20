@@ -108,7 +108,7 @@ module CryoGridTempSaltFunctionalities
         a1 = 1.0 ./ porosity[i] - a[i]*abs(Tmelt[i])^b[i];
 
         if (T_ub[1] .+ T[i]) / 2.0 <= Tmelt_inDegreeC[i]
-            liqWater = 1.0 / (a1 .+ a[i]*abs((T_ub .+ T[i]) / 2.0) .^ b[i]);
+            liqWater = 1.0 / (a1 .+ a[i]*abs((T_ub[1] .+ T[i]) / 2.0) .^ b[i]);
         else
             liqWater = porosity[i];
         end
@@ -157,13 +157,7 @@ module CryoGridTempSaltFunctionalities
             end
 
             if T[i] <= Tmelt_inDegreeC[i]
-                println("T[i]")
-                println(T[i])
-                println("a[i]")
-                println(a[i])
-                println("b[i]")
-                println(b[i])
-                d_liqWater = a[i] * b[i] * abs(T[i]^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i])) / (a1 + a[i]*abs(T[i])^b[i]);
+                d_liqWater = a[i] * b[i] * abs(T[i])^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i]) / (a1 + a[i]*abs(T[i])^b[i]);
             else
                 d_liqWater = 0.0;
             end

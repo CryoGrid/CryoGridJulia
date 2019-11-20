@@ -78,7 +78,7 @@ mutable struct stratum
 
             #calculate resulting flux and save temporary variables for conductivity and spatial derivative calculations
             this.TEMP.T_ub = T_ub; #for conductivity
-            this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0); #for spatial derivative
+            this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0);#for spatial derivative
 
             return this
         end

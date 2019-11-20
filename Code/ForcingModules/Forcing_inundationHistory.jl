@@ -24,7 +24,7 @@ mutable struct forcing
 
         this.initialize = function(this::forcing)
            this.PARA.SL_no .= 666; #2
-           this.PARA.TF_no .= 3; #2;
+           this.PARA.TF_no .= 2; #3;
            this.PARA.T_freeze .= -1.6;
            this.PARA.T_IceSheet .= 0.0;
            this.PARA.IS .= 100.0;
@@ -57,6 +57,10 @@ mutable struct forcing
                this = generateForcing_fromData(this);
            end
 
+           #println("generated Forcing data")
+           #println([this.DATA.timeForcing[1], this.DATA.timeForcing[20], this.DATA.timeForcing[end - 20], this.DATA.timeForcing[end]])
+           #println([this.DATA.TForcing[1], this.DATA.TForcing[20], this.DATA.TForcing[end - 20], this.DATA.TForcing[end]])
+
            #calculate time in days for the main programm
            this.PARA.start_time .= this.PARA.startForcing .* 365.25;
            this.PARA.end_time .= this.PARA.endForcing .*365.25;
@@ -88,7 +92,7 @@ function generateForcing_testing(this::forcing)
     time_inundation = 0;
     surfaceState = zeros(size(this.DATA.timeForcing));
 
-    testcase = this.PARA.TF_no;
+    testcase = Int64(this.PARA.TF_no[1]);
 
     if testcase == 1 #one-third glacier, one third aerial, one third flooded
 
@@ -101,21 +105,21 @@ function generateForcing_testing(this::forcing)
 
         i_start = i_end + 1;
         i_end = 2*i_end;
-        forcingData[i_start:i_end] = linRange(-17.0, -9.0, i_end - i_start+1);
+        forcingData[i_start:i_end] = LinRange(-17.0, -9.0, i_end - i_start+1);
         coverage[i_start:i_end] = 0.0;
         surfaceState[i_start:i_end] = 1;
 
         i_start = i_end + 1;
         i_end = length(forcingData);
-        forcingData[i_start:i_end] = linRange(this.PARA.T_freeze, 0, i_end - i_start+1);
-        coverage[i_start:i_end] = linRange(-30.0, -2.0, i_end - i_start+1);
+        forcingData[i_start:i_end] = LinRange(this.PARA.T_freeze, 0, i_end - i_start+1);
+        coverage[i_start:i_end] = LinRange(-30.0, -2.0, i_end - i_start+1);
         surfaceState[i_start:i_end] = 0;
         saltConcForcing[i_start:i_end] = this.PARA.benthicSalt;
 
         time_inundation = i_end - i_start + 1;
 
-    elseif testcase == 1 #subaerial ramp
-        forcingData = linRange(-20.0 ,20.0 , length(this.DATA.timeForcing));
+    elseif testcase == 2 #subaerial ramp
+        forcingData = LinRange(-20.0 ,20.0 , length(this.DATA.timeForcing));
         coverage = zeros(size(this.DATA.timeForcing));
         time_inundation = 0;
         surfaceState = ones(size(this.DATA.timeForcing));
@@ -137,8 +141,8 @@ function generateForcing_testing(this::forcing)
 
     elseif testcase == 4 #subsea ramp
 
-        forcingData = linRange(5.0,-10.0, length(this.DATA.timeForcing));
-        coverage = linRange(2.0,200.0, length(this.DATA.timeForcing));
+        forcingData = LinRange(5.0,-10.0, length(this.DATA.timeForcing));
+        coverage = LinRange(2.0,200.0, length(this.DATA.timeForcing));
         time_inundation = length(this.DATA.timeForcing);
         surfaceState = ones(size(this.DATA.timeForcing));
 
@@ -169,6 +173,7 @@ function generateForcing_testing(this::forcing)
     end
 
     this.DATA.TForcing = forcingData;
+
     #this.DATA.coverage = coverage;
     #this.DATA.time_inundation = time_inundation;
     this.DATA.surfaceState = surfaceState;

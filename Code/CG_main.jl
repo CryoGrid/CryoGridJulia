@@ -120,7 +120,7 @@ include("Results/OUT_subseaPF.jl")
 
 
 # set run variables
-savename = "test1"
+savename = "test2"
 
 # forcing variables are currently set in the focing class
 # initialize forcing
@@ -142,8 +142,8 @@ marine = SEDIMENT_T.stratum();
 saltysilt = CryoGridTypes.sediment([1], [0.6], [0.0], [890.0]);
 sand = CryoGridTypes.sediment([0], [0.6], [0.0], [0.0]);
 
-marine.initialize(marine, saltysilt, 0.0, -50.0, 2.0);
-terrestrial.initialize(terrestrial, sand, -51.0, -2000.0, 5.0);
+marine.initialize(marine, saltysilt, 0.0, -250.0, 2.0);
+terrestrial.initialize(terrestrial, sand, -250.0, -2000.0, 2.0);
 
 interaction_heat = CryoGridInteractions.IA_HEAT();
 

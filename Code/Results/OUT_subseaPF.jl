@@ -37,20 +37,20 @@ mutable struct OUT
         end
 
         this.complete_init_out = function(this::OUT, forcing)
-            this.TEMP.out_time .= forcing.PARA.startForcing[1] .*365.24; #start saving on the first time step
-            this.PARA.save_time .= (forcing.PARA.endForcing[1])*365.24;
+            this.TEMP.out_time .= forcing.PARA.startForcing[1] .*365.25; #start saving on the first time step, days for main loop
+            this.PARA.save_time .= (forcing.PARA.endForcing[1]) .*365.25; #days for main loop
             #lastDisp, dispInterval, save_time, output_timestep
-            this.PARA.lastDisp .= this.TEMP.out_time[1] -100.0;
-            this.PARA.dispInterval .= 200.0*365.25;
-            this.PARA.output_timestep .= 20;
+            this.PARA.lastDisp .= this.TEMP.out_time[1] ./365.25 -100.0; #years
+            this.PARA.dispInterval .= 1000.0; #years
+            this.PARA.output_timestep .= 20; #years
 
             #save forcing data
             this.FORCING = deepcopy(forcing.DATA);
             depthInterp = -[-50.0:2.0:2000.0;]; #depth points that everything gets interpolated to
-            timestamp = [this.TEMP.out_time[1]:this.PARA.output_timestep[1]:this.PARA.save_time[1];];
-            emptyRes = NaN64 .* ones(length(depthInterp), length(timestamp)+1);5
+            timestamp = [this.TEMP.out_time[1] ./365.25:this.PARA.output_timestep[1]:this.PARA.save_time[1] ./365.25;]; #years for saving
+            emptyRes = NaN64 .* ones(length(depthInterp), length(timestamp));5
 
-            this.RES = CryoGridTypes.outresults(timestamp,  depthInterp, emptyRes, emptyRes, emptyRes, emptyRes, emptyRes);
+            this.RES = CryoGridTypes.outresults(timestamp,  depthInterp, deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes));
 
             return this
         end
@@ -60,19 +60,23 @@ mutable struct OUT
 
             #check if run is without errors
             if isnan(mean(TOP.NEXT.STATVAR.T))
-                println(string("Time is ", t/365.25, " - temperature is NAN - terminating!"))
-                this.BREAK .= true;
+                println(string("Time is ", floor(t[1]/365.25), " - temperature is NAN - terminating!"))
+                this.BREAK = true;
             end
 
             if hasfield(typeof(TOP.NEXT.STATVAR), :saltConc) && isnan(mean(TOP.NEXT.STATVAR.saltConc))
-                println(string("Time is ", t/365.25, " - salt concentration is NAN - terminating!"))
-                this.BREAK .= true;
+                println(string("Time is ", floor(t[1]/365.25), " - salt concentration is NAN - terminating!"))
+                this.BREAK = true;
             end
 
             #display current state every now and then
-            if mod(t[1],this.PARA.dispInterval[1]) == 0 ||          abs(this.PARA.lastDisp[1] - t[1]) > this.PARA.dispInterval[1]
-                this.PARA.lastDisp .= t;
-                println(string("Time is ", t/365.25, " years bfi"))
+            if mod(t[1]/365.25,this.PARA.dispInterval[1]) == 0 ||          abs(this.PARA.lastDisp[1] - t[1]/365.25) > this.PARA.dispInterval[1]
+
+                this.PARA.lastDisp .= t ./ 365.25; #years
+
+                println(string("Time is ", floor(t[1]/365.25), " years bfi"))
+                println("Current Forcing Temperature")
+                println(forcing.TEMP.TForcing)
             end
 
             #update runinfo every step
@@ -82,7 +86,6 @@ mutable struct OUT
 
             if t==this.TEMP.out_time || this.BREAK == true
                 out_index = Int64(this.TEMP.out_index[1]);
-                time_index = out_index;
 
                 T = Array{Float64,1}()
                 saltConc = Array{Float64,1}()
@@ -137,7 +140,7 @@ mutable struct OUT
                     this.BREAK = true;
                 else
                     this.TEMP.out_index[1] += 1.0;
-                    this.TEMP.out_time .= this.RES.time[out_index];
+                    this.TEMP.out_time .= this.RES.time[Int64(this.TEMP.out_index[1])].*365.25;
                 end
 
             end
