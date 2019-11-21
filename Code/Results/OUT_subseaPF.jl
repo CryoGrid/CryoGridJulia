@@ -42,7 +42,7 @@ mutable struct OUT
             #lastDisp, dispInterval, save_time, output_timestep
             this.PARA.lastDisp .= this.TEMP.out_time[1] ./365.25 -100.0; #years
             this.PARA.dispInterval .= 1000.0; #years
-            this.PARA.output_timestep .= 20; #years
+            this.PARA.output_timestep .= 100; #years
 
             #save forcing data
             this.FORCING = deepcopy(forcing.DATA);

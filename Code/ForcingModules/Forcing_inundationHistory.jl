@@ -22,20 +22,20 @@ mutable struct forcing
         this.PARA = CryoGridTypes.forcingparameter([0], [0], [0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0]);
 
 
-        this.initialize = function(this::forcing)
-           this.PARA.SL_no .= 666; #2
-           this.PARA.TF_no .= 2; #3;
+        this.initialize = function(this::forcing, SL_no::Int64=666, TF_no::Int64=2, lat::Float64=69.945, lon::Float64=-134.0, startForcing::Float64=-2000.0)
+           this.PARA.SL_no .= SL_no; #2
+           this.PARA.TF_no .= TF_no; #3;
            this.PARA.T_freeze .= -1.6;
            this.PARA.T_IceSheet .= 0.0;
            this.PARA.IS .= 100.0;
            this.PARA.benthicSalt .= 989.63;
            this.PARA.saltForcingSwitch .= 0;
-           this.PARA.latitude .= 69.945;
-           this.PARA.longitude .= -134;
+           this.PARA.latitude .= lat;
+           this.PARA.longitude .= lon;
            this.PARA.altitude .= 14.634;
            this.PARA.heatFlux_lb .= 0.05;
-           this.PARA.startForcing .= -2000.0;
-           this.PARA.dtForcing .= 50.0;
+           this.PARA.startForcing .= startForcing;
+           this.PARA.dtForcing .= 100.0;
            this.PARA.endForcing .= 0.0;
 
            this.PARA.domain_depth .= 10000.0; #?
@@ -208,7 +208,7 @@ function generateForcing_fromData(this::forcing)
 
     #define sea level history
     if this.PARA.SL_no[1] == 1  #Lambeck et al.
-        file = matopen("forcing/subseaInput.mat")
+        file = matopen("ForcingData/subseaInput.mat")
         elevation = read(file, "elevation");
         nominal_elevation = read(file, "nominal_elevation");
         time = read(file, "time");
@@ -216,7 +216,7 @@ function generateForcing_fromData(this::forcing)
         seaLevel = matlab.interp1([time[1:325,1].*1000.0; 50000.0], [nominal_elevation[1:325,1]; nominal_elevation[325,1]], - timeForcing, "linear");
 
     elseif this.PARA.SL_no[1] == 2 #Walbroeck et al.
-        file = matopen("forcing/sealevel_Waelbroeck.mat")  #starting at -429.5 kyrs BP
+        file = matopen("ForcingData/sealevel_Waelbroeck.mat")  #starting at -429.5 kyrs BP
         time_W = read(file, "time_W");
         RSL_W = read(file, "RSL_W");
 
@@ -226,7 +226,7 @@ function generateForcing_fromData(this::forcing)
         seaLevel = matlab.interp1(time_W .* 1000.0 ,RSL_W,timeForcing, "linear");
 
     elseif this.PARA.SL_no[1] == 3 #Grant et al.
-        file = matopen("forcing/sealevel_Grant_prob.mat")  #starting at -492 kyrs BP
+        file = matopen("ForcingData/sealevel_Grant_prob.mat")  #starting at -492 kyrs BP
         time_G = read(file, "time_G");
         RSL_G = read(file, "RSL_G");
 
@@ -239,7 +239,7 @@ function generateForcing_fromData(this::forcing)
 
     #define air temperature forcing
     if this.PARA.TF_no[1] == 1 #use GISP-2 data
-        file = matopen("forcing/GISP2.mat");
+        file = matopen("ForcingData/GISP2.mat");
         GISP2_T = read(file, "GISP2_T");
 
         baseT = -5.0;   #air temperature offset for GISP data
@@ -254,7 +254,7 @@ function generateForcing_fromData(this::forcing)
         forcingData = T;
 
     elseif this.PARA.TF_no[1] == 2 #use CLIMBER-2 data
-        file = matopen("forcing/CLIMBER2/SATcor_ANN_C2ip_500k.mat")          #CLIMBER-2 SAT, corrected for thermal offset
+        file = matopen("ForcingData/CLIMBER2/SATcor_ANN_C2ip_500k.mat")          #CLIMBER-2 SAT, corrected for thermal offset
         SAT_ANNipt2 = read(file, "SAT_ANNipt2");
         lat_C2ip = read(file, "lat_C2ip");
         lon_C2ip = read(file, "lon_C2ip2");
@@ -279,39 +279,42 @@ function generateForcing_fromData(this::forcing)
     time_inundation = this.PARA.dtForcing * sum(ind_inundation); #duration of inundation
 
     @inbounds for i = 1:length(forcingData) #adapt forcing temperature for inundated sites
-        if zsb < seaLevel[i] #site is inundated
-            waterDepth = seaLevel[i] - zsb;    #depth water column
+        if zsb[1] < seaLevel[i] #site is inundated
+            waterDepth = seaLevel[i] - zsb[1];    #depth water column
             if(waterDepth > 30) #below 30m T sea bottom equals T_freeze)
                 T_seaWater = forcing.PARA.T_freeze;
             elseif waterDepth <= 30 && waterDepth > 2 #linear scaling between 30m t0 2m water depth
-                T_seaWater = 1.0 ./ 14.0 * (forcing.PARA.T_freeze / 2.0 * waterDepth - forcing.PARA.T_freeze);
+                T_seaWater = 1.0 ./ 14.0 * (this.PARA.T_freeze / 2.0 * waterDepth - this.PARA.T_freeze);
             else  #between 2m and 0m T sea bottom equals 0�C
                 T_seaWater = 0.0;
             end
-            forcingData[i] = T_seaWater;
+            forcingData[i] = T_seaWater[1];
 
-            coverage[i] = -waterDepth;
+            coverage[i] = - waterDepth[1];
 
-            saltConcForcing[i] = forcing.PARA.benthicSalt;
+            saltConcForcing[i] = this.PARA.benthicSalt[1];
         end
     end
 
     #set temperature data for (warm-based) ice sheet covered sites to bottom ice sheet temperature
-    if forcing.PARA.IS[1] > 0 #use of CLIMBER-2 ice sheet data
-        file = matopen("forcing/CLIMBER2/Ice_Thickness_C2ipt_500kyrs") #get CLIMBER-2 ice sheet thickness matrix (same grid resolution as SAT matrix
+    if this.PARA.IS[1] > 0 #use of CLIMBER-2 ice sheet data
+        file = matopen("ForcingData/CLIMBER2/Ice_Thickness_C2ipt_500kyrs.mat") #get CLIMBER-2 ice sheet thickness matrix (same grid resolution as SAT matrix
+        ITHipt = read(file, "ITHipt");
 
         if !@isdefined this_ind_lat
             min_lat_dist, this_ind_lat = findmin(abs.(lat_C2ip .- lat));
             min_lon_dist, this_ind_lon = findmin(abs.(lon_C2ip .- lon));
 
+            file = matopen("ForcingData/CLIMBER2/SATcor_ANN_C2ip_500k.mat")          #CLIMBER-2 SAT, corrected for thermal offset
+            time_C2ip = read(file, "time_C2ip");
         end
 
         ITH = ITHipt[this_ind_lon[2],this_ind_lat[2],:]; #time series of CLIMBER-2 ITH for chosen grid cell
-        ITH = matlab.interp1(time_C2ip, ITH, timeForcing, "linear");
+        ITH = matlab.interp1(vec(time_C2ip), ITH, timeForcing, "linear");
         #clear ITHipt  % free memory
         ind_IceCover = ITH .> this.PARA.IS;
         forcingData[ind_IceCover] .= this.PARA.T_IceSheet; #set temperature to ice sheet bottom temperatures for sites with a ice sheet coverage larger than S_IS
-        ind_IS = ITH .> forcing.PARA.IS; #index of years of IceSheet coverage thicker than S_IS
+        ind_IS = ITH .> this.PARA.IS[1]; #index of years of IceSheet coverage thicker than S_IS
 
         coverage[ind_IceCover] = ITH[ind_IceCover];
     end
@@ -321,7 +324,7 @@ function generateForcing_fromData(this::forcing)
     surfaceState[ind_inundation] .= 0;         #set inundation periods to 0 (submarine==0)
 
     if @isdefined ind_IS
-        surfaceState[ind_IS] = -1;            #set subglacial periods to -1 (subglacial ==-1)
+        surfaceState[ind_IS] .= -1;            #set subglacial periods to -1 (subglacial ==-1)
     end
 
 
