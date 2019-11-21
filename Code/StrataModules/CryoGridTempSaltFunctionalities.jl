@@ -116,7 +116,7 @@ module CryoGridTempSaltFunctionalities
         thermCond[i] = (liqWater[1] .* sqrt.(k_water[1]) .+ (porosity[i] .- liqWater[1]) .* sqrt.(k_ice[1]) .+ mineral[i] .* sqrt.(k_mineral[1]) .+ organic[i] .* sqrt.(k_organic[1])) .^2.0;
 
         #calculate for inner edges
-        @inbounds for i = 2:length(layerDepth) - 1
+        @inbounds for i = 2:length(layerDepth)
             #take the average of liqWater's of grid cells above and below
             a1 = 1.0 / porosity[i-1] - a[i-1]*abs(Tmelt[i-1])^b[i-1];
             if T[i-1] <= Tmelt_inDegreeC[i-1]
