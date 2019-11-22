@@ -100,7 +100,11 @@ mutable struct OUT
                     #global CURRENT
 
                     T = cat(T, CURRENT.STATVAR.T, dims=1);
-                    saltConc = cat(saltConc, CURRENT.STATVAR.saltConc, dims=1);
+                    if forcing.PARA.saltForcingSwitch == 0 #no salt diffusion
+                        saltConc = cat(saltConc, CURRENT.STATVAR.saltConc./CURRENT.STATVAR.porosity.*CURRENT.STATVAR.liqWater, dims=1);
+                    else
+                        saltConc = cat(saltConc, CURRENT.STATVAR.saltConc, dims=1);
+                    end
                     thermCond = cat(thermCond, CURRENT.STATVAR.thermCond, dims=1);
                     c_eff = cat(c_eff, CURRENT.STATVAR.c_eff, dims=1);
                     liqWater = cat(liqWater, CURRENT.STATVAR.liqWater, dims=1);

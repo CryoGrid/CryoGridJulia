@@ -15,7 +15,7 @@ module CryoGridTempSaltFunctionalities
         a = a_silt .*(this.STATVAR.soilType .== 1) + a_sand .*(this.STATVAR.soilType .== 0);
         b = b_silt .*(this.STATVAR.soilType .== 1) + b_sand .*(this.STATVAR.soilType .== 0);
 
-        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt);
+        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt) .+ [273.15];
 
         return Tmelt, a, b
     end
@@ -46,11 +46,10 @@ module CryoGridTempSaltFunctionalities
         #apply forcing to surface
         T_0[1] = TForcing[1]; #TForcing is a Vector with 1 element
 
-
         @inbounds for i = 2:length(T_0)
             T = T_0[i-1];
 
-            a1 = 1.0 ./ this.STATVAR.porosity[i] - this.PARA.a[i] .* Tmelt[i] - this.PARA.b[i] .* Tmelt[i].^2.0;
+            a1 = 1.0 ./ this.STATVAR.porosity[i] - this.PARA.a[i] .* Tmelt_inDegreeC[i] - this.PARA.b[i] .* Tmelt_inDegreeC[i].^2.0;
 
             if T < Tmelt_inDegreeC[i]
                 liqWater = (1.0 ./ (a1 + this.PARA.a[i] .* T + this.PARA.b[i] .* T.^2.0));
@@ -96,16 +95,17 @@ module CryoGridTempSaltFunctionalities
         T_ub = this.TEMP.T_ub;
         T = this.STATVAR.T;
 
+
+
         #-------------- assign thermal conductivity -------------------------%
         #conductivity lives on the edges
         #interpolate liqWater to the edges
         layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick)];
-        thermCond = zeros(length(this.STATVAR.layerThick)+1,1);
-        thermCond = dropdims(thermCond, dims=2);
+        thermCond = zeros(size(layerDepth));
 
         #calculate for upper boundary
         i = 1;
-        a1 = 1.0 ./ porosity[i] - a[i]*abs(Tmelt[i])^b[i];
+        a1 = 1.0 ./ porosity[i] - a[i]*abs(Tmelt_inDegreeC[i])^b[i];
 
         if (T_ub[1] .+ T[i]) / 2.0 <= Tmelt_inDegreeC[i]
             liqWater = 1.0 / (a1 .+ a[i]*abs((T_ub[1] .+ T[i]) / 2.0) .^ b[i]);
@@ -116,16 +116,16 @@ module CryoGridTempSaltFunctionalities
         thermCond[i] = (liqWater[1] .* sqrt.(k_water[1]) .+ (porosity[i] .- liqWater[1]) .* sqrt.(k_ice[1]) .+ mineral[i] .* sqrt.(k_mineral[1]) .+ organic[i] .* sqrt.(k_organic[1])) .^2.0;
 
         #calculate for inner edges
-        @inbounds for i = 2:length(layerDepth)
+        @inbounds for i = 2:length(layerDepth)-1
             #take the average of liqWater's of grid cells above and below
-            a1 = 1.0 / porosity[i-1] - a[i-1]*abs(Tmelt[i-1])^b[i-1];
+            a1 = 1.0 / porosity[i-1] - a[i-1]*abs(Tmelt_inDegreeC[i-1])^b[i-1];
             if T[i-1] <= Tmelt_inDegreeC[i-1]
                 liqWater = 1.0 / (a1 + a[i-1]*abs(T[i-1])^b[i-1]);
             else
                 liqWater = porosity[i-1];
             end
 
-            a1 = 1.0 / porosity[i] - a[i]*abs(Tmelt[i])^b[i];
+            a1 = 1.0 / porosity[i] - a[i]*abs(Tmelt_inDegreeC[i])^b[i];
             if T[i] <= Tmelt_inDegreeC[i]
                 liqWater = (liqWater + 1.0 / (a1 + a[i]*abs(T[i])^b[i])) / 2.0;
             else
@@ -147,7 +147,7 @@ module CryoGridTempSaltFunctionalities
         midptDepth = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
 
         @inbounds for i = 1:length(midptDepth)
-            a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt[i])^b[i];
+            a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt_inDegreeC[i])^b[i];
 
             #determine water content
             if T[i] <= Tmelt_inDegreeC[i]

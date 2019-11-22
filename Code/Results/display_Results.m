@@ -5,7 +5,7 @@ function display_Results(savename, plotdepth)
 %think about a better was to display results - maybe surf or patch?
 
 if nargin <1
-    savename = 'submarine_Benchmark_Testlocation4';
+    savename = 'testlocation1_50k';
 end
 if nargin < 2
     plotdepth = -800;
@@ -118,7 +118,7 @@ pos = get(gca, 'Position');
 set(gca, 'Position', [pos(1) pos(2) pos0(3) pos(4)]);
 
 
-saveas(gcf, fullfile(savename, 'Results_overview.png'))
+saveas(gcf, fullfile(savename, strcat(savename, '_julia_noSalt_results_overview.png')))
 
 
 fprintf('Timesteps: %.0f \n', RUNINFO.timesteps);
