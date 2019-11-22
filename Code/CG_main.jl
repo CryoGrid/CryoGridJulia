@@ -77,7 +77,6 @@ while t <= forcing.PARA.end_time
         CURRENT = CURRENT.NEXT;
     end
 
-
     #calculate diagnostic variables
     #some effects only happen in the first cell
     #calculate bottom to top
