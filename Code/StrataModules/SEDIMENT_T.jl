@@ -112,6 +112,7 @@ mutable struct stratum
         #calculate advance in time of state variables
         this.advance_prognostic = function(this::stratum, timestep::Float64) #real timestep derived as minimum of several classes in days
             timestep = timestep*3600.0*24.0; #convert timestep from days to seconds
+
             this.STATVAR.T = this.STATVAR.T + timestep .* this.TEMP.divT;
 
             return this

@@ -15,7 +15,7 @@ module CryoGridTempSaltFunctionalities
         a = a_silt .*(this.STATVAR.soilType .== 1) + a_sand .*(this.STATVAR.soilType .== 0);
         b = b_silt .*(this.STATVAR.soilType .== 1) + b_sand .*(this.STATVAR.soilType .== 0);
 
-        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt);
+        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt) .+ [273.15];
 
         return Tmelt, a, b
     end
@@ -45,7 +45,6 @@ module CryoGridTempSaltFunctionalities
         T_0 = zeros(size(midpoints));
         #apply forcing to surface
         T_0[1] = TForcing[1]; #TForcing is a Vector with 1 element
-
 
         @inbounds for i = 2:length(T_0)
             T = T_0[i-1];
@@ -95,6 +94,8 @@ module CryoGridTempSaltFunctionalities
         #temperature and upper boundary
         T_ub = this.TEMP.T_ub;
         T = this.STATVAR.T;
+
+
 
         #-------------- assign thermal conductivity -------------------------%
         #conductivity lives on the edges
