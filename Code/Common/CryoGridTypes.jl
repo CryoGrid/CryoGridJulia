@@ -30,7 +30,7 @@ struct constants #24 Array{Float64,1}
     tau::Array{Float64,1}
 end
 
-mutable struct parameter # 11 Array{Float64,1}
+mutable struct parameter # 14 Array{Float64,1}
     heatFlux_lb::Array{Float64,1}
     albedo::Array{Float64,1}
     epsilon::Array{Float64,1}
@@ -41,9 +41,15 @@ mutable struct parameter # 11 Array{Float64,1}
     max_timestep::Array{Float64,1}
     dE_max::Array{Float64,1}
     dt_max::Array{Float64,1}
+    dsaltConc_max::Array{Float64,1}
 
     a::Array{Float64,1}
     b::Array{Float64,1}
+
+    alpha::Array{Float64,1}
+    n::Array{Float64,1}
+    delta::Array{Float64,1}
+    saltDiff0::Array{Float64,1}
 end
 
 mutable struct statvar # 19 Array{Float64,1}

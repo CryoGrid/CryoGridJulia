@@ -139,7 +139,7 @@ module CryoGridTempSaltFunctionalities
         #interaction
         i = length(thermCond);
         thermCond[i] = thermCond[i-1];
-        
+
         #------------------ determine bulk conductivity and capacity------%
         # also save liqWater here
         #Heat Capacity lives on the midpoints of the cells
@@ -174,5 +174,131 @@ module CryoGridTempSaltFunctionalities
 
         return this
     end
+
+    function getThermalProps_wSalt(this)
+
+        #read constants
+        c_w = this.CONST.c_w;
+        c_o = this.CONST.c_o;
+        c_m = this.CONST.c_m;
+        c_i = this.CONST.c_i;
+
+        L_f = this.CONST.L_f;
+        tau = this.CONST.tau;
+
+        k_a = this.CONST.k_a;
+        k_w = this.CONST.k_w;
+        k_i = this.CONST.k_i;
+        k_o = this.CONST.k_o;
+        k_m = this.CONST.k_m;
+
+        layerThick = this.STATVAR.layerThick;
+        saltDiff0 = this.PARA.saltDiff0;
+
+        #Calculate liqWater and derivatives
+        liqWater, Tmelt = watercontent_temperature_salt(this); #Tmelt in Kelvin!
+        this.STATVAR.liqWater = liqWater;
+        this.STATVAR.Tmelt = Tmelt;
+
+        porosity = this.STATVAR.porosity;
+        ice = porosity .- liqWater;
+        mineral = this.STATVAR.mineral;
+        organic = this.STATVAR.organic;
+        air = 1.0 .- liqWater .- ice .- mineral .- organic;
+
+
+        dliqWater_dT = getDerivativeWaterContent(this);
+
+        c = c_m[1] .* mineral .+ c_o[1] .* organic + c_w[1] .* liqWater .+ c_i[1] .* ice;
+        c_eff = c .+ L_f .* dliqWater_dT;
+
+        saltDiff = saltDiff0 .* liqWater ./ tau;
+        saltDiff = [saltDiff[1], (saltDiff[1:end-1] .* saltDiff[2:end]) ./ (saltDiff[1:end-1] .+ saltDiff[2:end]), saltDiff[end]];
+
+
+        thermCond = (liqWater .* k_w[1] .^0.5 .+ ice .* k_i[1] .^0.5 + mineral .* k_m[1] .^0.5 .+ organic .* k_o[1] .^0.5 + air .* k_a[1] .^0.5).^2;
+        thermCond = [thermCond[1], (thermCond[1:end-1] .* thermCond[2:end] .* (layerThick[1:end-1] .+ layerThick[2:end])) ./ (thermCond[1:end-1] .* layerThick[2:end] .+ thermCond[2:end] .* layerThick[1:end-1]), thermCond[end]];
+
+        return saltDiff, thermCond, c_eff
+    end
+
+    function watercontent_temperature_salt(this, T=NaN, saltConc=NaN)
+        #T is required to be in Kelvin!
+        #convert to Kelvin, if you use this.STATVAR.T or
+        #give T in Kelvin via optionalArgs
+
+        if ~isnan(T) #T and saltConc given as optional args
+            #T is in Kelvin
+        else
+            #Convert from degreeC to Kelvin
+            T = this.STATVAR.T .+ 273.15;
+            saltConc = this.STATVAR.saltConc;
+        end
+
+        theta_sat = (this.STATVAR.porosity[1:end-1] .+ this.STATVAR.porosity[2:end]) ./2.0;
+
+        #see del'amico
+        alpha = this.PARA.alpha;         #in Van genuchten model [m^-1]
+        n = this.PARA.n;                 #in van genuchten model [-]
+
+
+        R = this.CONST.R;
+        g = this.CONST.g;
+        rho_w = this.CONST.rho_w;
+        L_f = this.CONST.L_f;
+        Tmelt = this.CONST.Tmelt; # in K
+
+        Tmelt = Tmelt .+ Tmelt ./ L_f .* ( .- R .* saltConc .* Tmelt); #in Kelvin
+
+        #Eq. 17 from Dall Amico, but using the solute potential of the UNFROZEN
+        #soil as the last term - I think this is correct now consistent with
+        #freezing_point_depression in free water
+
+        water_pot = L_f ./ (rho_w .* g .* Tmelt) .* (T .- Tmelt) .* (T .< Tmelt);
+        #the first term is equivalentto Eq. 2 in Dall Amico - this is the effect of the matric potential
+        #the third term is the solute potential of the unfrozen soil - somehow this is needed as a reference potential
+        #the sethermCond term is the solute potential of the freezing soil - this is where the magig happens
+        #as it increases with decreasing liqWater - but not sure why this is PLUS -
+        #but it must be plus to offset the efect of the first term which is minus
+        #and becoming more negative with decreasing T - otherwise the freezing
+        #happens even faster
+
+        water_pot = water_pot .* (water_pot .< 0.0);
+        #this is needed to get unchanged water contents above Tmelt
+
+        liqWater = theta_sat ./ (1.0 .+ (alpha[1] .* abs.(water_pot)) .^n[1]) .^(1.0 .- 1.0 ./n[1]);
+        #this is the final formula, but waterPot depends also on liqWater, so it's a
+        #coupled eq. system
+
+        return liqWater, Tmelt
+    end
+
+    function getDerivativeWaterContent(this)
+        #Within this function, T is in Kelvin
+
+        T = this.STATVAR.T + 273.15; #convert from C to Kelvin
+        saltConc = this.STATVAR.saltConc;
+        Tmelt = this.STATVAR.Tmelt; #in Kelvin
+
+        delta = this.PARA.delta; #timestep for derivative
+        R = this.CONST.R;
+        L_f = this.CONST.L_f;
+        Tmelt_free_water = this.CONST.Tmelt;
+
+        saltConc_unfrozen = - 0.5 .* (T .- Tmelt_free_water) .* L_f ./ R ./ Tmelt_free_water .^2.0;
+
+        #derivative wrt salt content
+        saltConc_left_bound  = minimum(saltConc .- delta, saltConc_unfrozen .- delta);
+        saltConc_right_bound = minimum(saltConc .+ delta, saltConc_unfrozen);
+        dliqWater_dsaltConc = (saltConc .< saltConc_unfrozen) .* (watercontent_temperature_salt(this, T, saltConc_left_bound) .- watercontent_temperature_salt(this, T, saltConc_right_bound)) ./(saltConc_left_bound .- saltConc_right_bound);
+
+        #derivative wrt temperature
+        T_left_bound = minminimum(T .- delta, Tmelt .- delta);
+        T_right_bound = minimum(T .+ delta, Tmelt);
+        dliqWater_dT = (T < Tmelt) .* (watercontent_temperature_salt(this, T_left_bound, saltConc) .- watercontent_temperature_salt(this, T_right_bound, saltConc)) ./ (T_left_bound .- T_right_bound);
+
+        return dliqWater_dT, dliqWater_dsaltConc
+    end
+
 
 end

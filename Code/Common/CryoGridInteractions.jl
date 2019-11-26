@@ -43,7 +43,7 @@ module CryoGridInteractions
 
         get_boundary_condition_m::Function
 
-        function IA_HEAT()
+        function IA_HEAT_SALT()
             this = new();
 
             this.PREVIOUS = [];

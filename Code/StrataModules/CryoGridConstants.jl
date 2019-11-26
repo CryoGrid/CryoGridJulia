@@ -52,6 +52,13 @@ module CryoGridConstants
         stratum.PARA.max_timestep .= [3600.0]; #[sec]
         stratum.PARA.dE_max  .= [0.5e5]; #[J/m3]
         stratum.PARA.dt_max  .= [100.0];
+        stratum.PARA.dsaltConc_max .= [5.0e-3];
+
+        stratum.PARA.alpha   .= [6.5e-1]; #6.50E-01 for silt, 4.06 for sand
+        stratum.PARA.n       .= [1.67]; # 1.67 for silt, 2.03 for sand
+        stratum.PARA.delta   .= [1.0e-7];
+        stratum.PARA.saltDiff0 .= [8.0e-10];
+
 
         return stratum
     end
