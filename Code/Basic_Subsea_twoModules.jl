@@ -18,12 +18,12 @@ include("CG_main.jl")
 
 
 # set run variables
-savename = "test2"
+savename = "testlocation1_50k"
 
 # forcing variables are currently set in the focing class
 # initialize forcing
 forcing = Forcing_inundationHistory.forcing();
-forcing = forcing.initialize(forcing, 3, 2, 69.945, -134.0, -4500.0)
+forcing = forcing.initialize(forcing, 3, 2, 69.945, -134.0, -50000.0)
 forcing = forcing.load_forcing_from_mat(forcing);
 
 #initialize out
@@ -77,5 +77,6 @@ while ~isequal(CURRENT, BOTTOM)
 end
 
 
+
 @time CG_main.main(TOP, BOTTOM, forcing, out, savename)
-#@code_warntype main(TOP, BOTTOM, forcing, out, savename)
+#@code_warntype CG_main.main(TOP, BOTTOM, forcing, out, savename)

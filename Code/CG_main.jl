@@ -8,14 +8,15 @@
 
 module CG_main
 # load used modules and stratum
-#include("StrataModules/SEDIMENT_T.jl")
-#include("ForcingModules/Forcing_inundationHistory.jl")
+include("StrataModules/SEDIMENT_T.jl")
+include("ForcingModules/Forcing_inundationHistory.jl")
 #include("Common/CryoGridTypes.jl")
-#include("Common/CryoGridInitialization.jl")
+include("Common/CryoGridInitialization.jl")
 #include("Common/CryoGridInteractions.jl")
-#include("Results/OUT_subseaPF.jl")
+include("Results/OUT_subseaPF.jl")
 
-function main(TOP, BOTTOM, forcing, out, savename)
+function main(TOP, BOTTOM, forcing, out, savename::String)
+
 # run time loop
 t = forcing.PARA.start_time;
 

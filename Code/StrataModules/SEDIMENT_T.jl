@@ -229,7 +229,6 @@ function get_derivative_temperature_only(this::stratum)
                             heatFlux_ub[1]) ./ #flux upper edge of cell
                     abs(layerDepth[i+1] .- layerDepth[i]); #size of cell
 
-
     #derivative for soil
     @inbounds for i = 2:length(midptDepth) - 1
         divT[i]=(1.0 / c_temp[i]) * (

@@ -137,8 +137,9 @@ module CryoGridTempSaltFunctionalities
 
         #extrapolate for lower edge - this is needed for calculation of
         #interaction
-        thermCond[i+1] = thermCond[i];
-
+        i = length(thermCond);
+        thermCond[i] = thermCond[i-1];
+        
         #------------------ determine bulk conductivity and capacity------%
         # also save liqWater here
         #Heat Capacity lives on the midpoints of the cells
