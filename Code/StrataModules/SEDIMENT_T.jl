@@ -41,11 +41,11 @@ mutable struct stratum
         this = new()
         this.CONST = CryoGridTypes.constants([0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
         this.PARA = CryoGridTypes.parameter([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0],[0.0], [0.0],[0.0], [0.0], [0.0])
-        this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0])
-        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0])
+        this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
+        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
 
         #initialize stratum
-        this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=vec(2 .*ones(1,500)))
+        this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=2.0)
             initialize_CONST(this);
             initialize_PARA(this);
 
@@ -54,7 +54,7 @@ mutable struct stratum
             if length(layerThick) > 1.0
                 this.STATVAR.layerThick = layerThick;
             else
-                this.STATVAR.layerThick = dropdims(layerThick .* ones(Int64(floor(abs(lowerPos - upperPos)/layerThick)) - 1, 1), dims=2)
+                this.STATVAR.layerThick = dropdims(layerThick .* ones(Int64(floor(abs(lowerPos - upperPos)/layerThick)), 1), dims=2);
             end
 
             this.STATVAR.soilType .= sedimenttype.soilType;
@@ -109,6 +109,7 @@ mutable struct stratum
         this.get_timestep = function(this::stratum)
             courant_number = minimum(0.5 * this.STATVAR.c_eff./this.STATVAR.thermCond[1:end-1] .* (this.STATVAR.layerThick).^2);
             timestep = courant_number/(3600.0*24.0); #convert estimate from seconds to days
+            timestep = max(timestep, 1) #no time steps smaller than 1 day
 
             return timestep
         end
@@ -157,7 +158,7 @@ function initialize_PARA(this::stratum)
 end
 
 function initialize_STATVAR(this::stratum)
-    midptDepth = [this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0; this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1)];
+    midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1);
 
     #calculate porosity
     porosityZero = 1.0 .- (this.STATVAR.mineral + this.STATVAR.organic);
@@ -179,9 +180,6 @@ function initialize_STATVAR(this::stratum)
     this.STATVAR.Tmelt = Tmelt; #in Kelvin!
     this.PARA.a = a;
     this.PARA.b = b;
-
-    #drop one element of saltConc so that it has the same dimension as T
-    this.STATVAR.saltConc = this.STATVAR.saltConc[1:end-1];
 
     #Calculate initial condition T0
     T = CryoGridTempSaltFunctionalities.steadyState(this); #steady state

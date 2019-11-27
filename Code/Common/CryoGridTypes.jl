@@ -75,15 +75,20 @@ mutable struct statvar # 19 Array{Float64,1}
 
     thermCond::Array{Float64,1}
     c_eff::Array{Float64,1}
+    saltDiff::Array{Float64,1}
     Tmelt::Array{Float64,1}
     soilType::Array{Float64,1}
 end
 
-mutable struct temporary # 4 Array{Float64,1}
+mutable struct temporary # 8 Array{Float64,1}
     T_ub::Array{Float64,1}
+    saltConc_ub::Array{Float64,1}
     heatFlux_ub::Array{Float64,1}
     heatFlux_lb::Array{Float64,1}
+    saltFlux_ub::Array{Float64,1}
+    saltFlux_lb::Array{Float64,1}
     divT::Array{Float64,1}
+    divsaltConc::Array{Float64,1}
 end
 
 struct forcingparameter # 3 Array{int64,1}, 15 Array{Float64,1}

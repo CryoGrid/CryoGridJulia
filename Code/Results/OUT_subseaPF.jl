@@ -41,7 +41,7 @@ mutable struct OUT
             this.PARA.save_time .= (forcing.PARA.endForcing[1]) .*365.25; #days for main loop
             #lastDisp, dispInterval, save_time, output_timestep
             this.PARA.lastDisp .= this.TEMP.out_time[1] ./365.25 -100.0; #years
-            this.PARA.dispInterval .= 1000.0; #years
+            this.PARA.dispInterval .= 100.0; #years
             this.PARA.output_timestep .= 100; #years
 
             #save forcing data
@@ -56,8 +56,6 @@ mutable struct OUT
         end
 
         this.store_out = function(this::OUT, t, TOP, BOTTOM, forcing, savename)
-
-
             #check if run is without errors
             if isnan(mean(TOP.NEXT.STATVAR.T))
                 println(string("Time is ", floor(t[1]/365.25), " - temperature is NAN - terminating!"))
@@ -101,7 +99,7 @@ mutable struct OUT
 
                     T = cat(T, CURRENT.STATVAR.T, dims=1);
                     if forcing.PARA.saltForcingSwitch[1] == 0 #no salt diffusion
-                        saltConc = cat(saltConc, CURRENT.STATVAR.saltConc./(CURRENT.STATVAR.porosity[1:end-1] + CURRENT.STATVAR.porosity[2:end])./2.0 .*CURRENT.STATVAR.liqWater, dims=1);
+                        saltConc = cat(saltConc, CURRENT.STATVAR.saltConc./CURRENT.STATVAR.porosity .*CURRENT.STATVAR.liqWater, dims=1);
                     else
                         saltConc = cat(saltConc, CURRENT.STATVAR.saltConc, dims=1);
                     end

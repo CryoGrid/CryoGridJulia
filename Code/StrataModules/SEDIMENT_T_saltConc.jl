@@ -39,8 +39,8 @@ mutable struct stratum
         this = new()
         this.CONST = CryoGridTypes.constants([0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
         this.PARA = CryoGridTypes.parameter([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0],[0.0], [0.0],[0.0], [0.0], [0.0])
-        this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0])
-        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0])
+        this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
+        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
 
         #initialize stratum
         this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=vec(2 .*ones(1,500)))
@@ -83,13 +83,13 @@ mutable struct stratum
             this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0);#for spatial derivative
 
             if forcing.TEMP.saltConcForcing[1] == 0.0
-                saltFlux_ub = [0.0];
+                saltFlux_ub = 0.0;
             else
                 saltFlux_ub = this.STATVAR.saltDiff[1] .* (this.STATVAR.saltConc[1] .- forcing.TEMP.saltConcForcing[1]) ./ abs(this.STATVAR.layerThick[1] ./2.0);
             end
 
             this.TEMP.saltFlux_ub = [saltFlux_ub];
-            this.TEMP.saltConc_ub = [forcing.TEMP.saltConcForcing];
+            this.TEMP.saltConc_ub = forcing.TEMP.saltConcForcing;
 
             return this
         end
@@ -101,7 +101,7 @@ mutable struct stratum
         this.get_boundary_condition_l = function(this::stratum, forcing)
             #geothermal heat flux prevails
             this.TEMP.heatFlux_lb = forcing.PARA.heatFlux_lb;
-            this.TEMP.saltFlux_lb = 0;
+            this.TEMP.saltFlux_lb = [0.0];
             return this
         end
 
@@ -116,9 +116,11 @@ mutable struct stratum
         #get minimal timestep for this stratum element
         this.get_timestep = function(this::stratum)
             courant_number_temperature = minimum(0.5 * this.STATVAR.c_eff./this.STATVAR.thermCond[1:end-1] .* (this.STATVAR.layerThick).^2);
-            courant_number_salt = minimum(0.5 * 1 ./ this.STATVAR.saltDiff[1:end-1] .* (ground.STATVAR.layerThick).^2);
-            timestep_min_salt = this.PARA.dsaltConc_max ./ maximum(this.TEMP.divsaltConc);
-            timestep = min(courant_number_salt, courant_number_temperature, timestep_min_salt)/(3600.0*24.0); #convert estimate from seconds to days
+            courant_number_salt = minimum(0.5 * 1 ./ this.STATVAR.saltDiff[1:end-1] .* (this.STATVAR.layerThick).^2);
+            timestep_min_salt = this.PARA.dsaltConc_max[1] ./ maximum(this.TEMP.divsaltConc);
+            timestep = min(courant_number_salt, courant_number_temperature, timestep_min_salt)/(3600.0*24.0);
+            timestep = max(timestep, 1) #no time steps smaller than 1 day
+            #convert estimate from seconds to days
 
             return timestep
         end
@@ -167,7 +169,7 @@ function initialize_PARA(this::stratum)
 end
 
 function initialize_STATVAR(this::stratum)
-    midptDepth = [this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0; this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1)];
+    midptDepth = this.STATVAR.upperPos[1] .+ this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1);
 
     #calculate porosity
     porosityZero = 1.0 .- (this.STATVAR.mineral + this.STATVAR.organic);
@@ -197,9 +199,6 @@ function initialize_STATVAR(this::stratum)
     this.STATVAR.Tmelt = Tmelt; #in Kelvin!
     this.PARA.a = a;
     this.PARA.b = b;
-
-    #drop one element of saltConc so that it has the same dimension as T
-    this.STATVAR.saltConc = this.STATVAR.saltConc[1:end-1];
 
     #Calculate initial condition T0
     T = CryoGridTempSaltFunctionalities.steadyState(this); #steady state
@@ -241,25 +240,25 @@ function get_derivative_temperature_salt(this)
     #heat flux divergence
     div_F_T = zeros(size(T));
     #upper boundary condition and assuming that k constant near the boundary
-    div_F_T[1]= (thermCond[2] .* (T[2] .- T[1]) ./ midptThick[1] .- T_flux_ub) ./ layerThick[1];
+    div_F_T[1]= (thermCond[2] .* (T[2] .- T[1]) ./ midptThick[1] .- T_flux_ub[1]) ./ layerThick[1];
 
     #use FD for 2nd derivation in space
     div_F_T[2:end-1]=  (thermCond[3:end-1] .* (T[3:end] .- T[2:end-1]) ./ midptThick[2:end] .- thermCond[2:end-2] .* (T[2:end-1] .- T[1:end-2]) ./ midptThick[1:end-1]) ./ layerThick[2:end-1];
 
     #lower BC (dT_dt=geothermal heat flux) and assuming that k constant near the boundary
-    div_F_T[end]= (T_flux_lb .- thermCond[end-1] .* (T[end] .- T[end-1]) ./ midptThick[end]) ./layerThick[end];
+    div_F_T[end]= (T_flux_lb[1] .- thermCond[end-1] .* (T[end] .- T[end-1]) ./ midptThick[end]) ./layerThick[end];
 
 
     #ion flux divergence
     div_F_saltConc = zeros(size(div_F_T));
     #upper boundary condition and assuming that k constant near the boundary
-    div_F_saltConc[1]= (saltDiff[2] .* (saltConc[2] .- saltConc[1]) ./ midptThick[1] .- saltFlux_ub) ./layerThick[1];
+    div_F_saltConc[1]= (saltDiff[2] .* (saltConc[2] .- saltConc[1]) ./ midptThick[1] .- saltFlux_ub[1]) ./layerThick[1];
 
     #use FD for 2nd derivation in space
     div_F_saltConc[2:end-1] = (saltDiff[3:end-1] .* (saltConc[3:end] .- saltConc[2:end-1]) ./midptThick[2:end] .- saltDiff[2:end-2] .* (saltConc[2:end-1] .- saltConc[1:end-2]) ./ midptThick[1:end-1]) ./layerThick[2:end-1];
 
     #lower BC zero flux and assuming that D_C constant near the boundary
-    div_F_saltConc[end] = (saltFlux_lb .- saltDiff[end-1] .* (saltConc[end] .- saltConc[end-1]) ./ midptThick[end]) ./layerThick[end];
+    div_F_saltConc[end] = (saltFlux_lb[1] .- saltDiff[end-1] .* (saltConc[end] .- saltConc[end-1]) ./ midptThick[end]) ./layerThick[end];
 
     #Derivative of water content
     dliqWater_dT, dliqWater_saltConc = CryoGridTempSaltFunctionalities.getDerivativeWaterContent(this);

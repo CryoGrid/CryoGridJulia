@@ -70,6 +70,6 @@ lon_list = [-134.0, 117.0, 117.0, 117.0];
     end
 
 
-    #@time CG_main.main(TOP, BOTTOM, forcing, out, savename)
-    @code_warntype CG_main.main(TOP, BOTTOM, forcing, out, savename)
+    @time CG_main.main(TOP, BOTTOM, forcing, out, savename)
+    #@code_warntype CG_main.main(TOP, BOTTOM, forcing, out, savename)
 end

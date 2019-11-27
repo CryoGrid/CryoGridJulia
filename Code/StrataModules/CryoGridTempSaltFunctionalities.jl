@@ -1,6 +1,7 @@
 module CryoGridTempSaltFunctionalities
     include("../Common/matlab.jl")
     using MAT
+    using Statistics
 
     function calculateTmelt(this)
         #calculate Tmelt in K
@@ -145,7 +146,7 @@ module CryoGridTempSaltFunctionalities
         #Heat Capacity lives on the midpoints of the cells
         c_eff = zeros(size(this.STATVAR.layerThick));
         liqWater = zeros(size(this.STATVAR.layerThick));
-        midptDepth = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
+        midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
 
         @inbounds for i = 1:length(midptDepth)
             a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt_inDegreeC[i])^b[i];
@@ -207,17 +208,18 @@ module CryoGridTempSaltFunctionalities
         air = 1.0 .- liqWater .- ice .- mineral .- organic;
 
 
-        dliqWater_dT = getDerivativeWaterContent(this);
+        dliqWater_dT, dliqWater_dsaltConc = getDerivativeWaterContent(this);
 
         c = c_m[1] .* mineral .+ c_o[1] .* organic + c_w[1] .* liqWater .+ c_i[1] .* ice;
         c_eff = c .+ L_f .* dliqWater_dT;
 
         saltDiff = saltDiff0 .* liqWater ./ tau;
-        saltDiff = [saltDiff[1], (saltDiff[1:end-1] .* saltDiff[2:end]) ./ (saltDiff[1:end-1] .+ saltDiff[2:end]), saltDiff[end]];
+        saltDiff = cat(saltDiff[1], (saltDiff[1:end-1] .* saltDiff[2:end]) ./ (saltDiff[1:end-1] .+ saltDiff[2:end]), saltDiff[end], dims=1);
 
 
         thermCond = (liqWater .* k_w[1] .^0.5 .+ ice .* k_i[1] .^0.5 + mineral .* k_m[1] .^0.5 .+ organic .* k_o[1] .^0.5 + air .* k_a[1] .^0.5).^2;
-        thermCond = [thermCond[1], (thermCond[1:end-1] .* thermCond[2:end] .* (layerThick[1:end-1] .+ layerThick[2:end])) ./ (thermCond[1:end-1] .* layerThick[2:end] .+ thermCond[2:end] .* layerThick[1:end-1]), thermCond[end]];
+
+        thermCond = cat(thermCond[1], (thermCond[1:end-1] .* thermCond[2:end] .* (layerThick[1:end-1] .+ layerThick[2:end])) ./ (thermCond[1:end-1] .* layerThick[2:end] .+ thermCond[2:end] .* layerThick[1:end-1]), thermCond[end], dims= 1);
 
         return saltDiff, thermCond, c_eff
     end
@@ -227,7 +229,7 @@ module CryoGridTempSaltFunctionalities
         #convert to Kelvin, if you use this.STATVAR.T or
         #give T in Kelvin via optionalArgs
 
-        if ~isnan(T) #T and saltConc given as optional args
+        if ~isnan(mean(T)) #T and saltConc given as optional args
             #T is in Kelvin
         else
             #Convert from degreeC to Kelvin
@@ -235,7 +237,7 @@ module CryoGridTempSaltFunctionalities
             saltConc = this.STATVAR.saltConc;
         end
 
-        theta_sat = (this.STATVAR.porosity[1:end-1] .+ this.STATVAR.porosity[2:end]) ./2.0;
+        theta_sat = this.STATVAR.porosity;
 
         #see del'amico
         alpha = this.PARA.alpha;         #in Van genuchten model [m^-1]
@@ -276,7 +278,7 @@ module CryoGridTempSaltFunctionalities
     function getDerivativeWaterContent(this)
         #Within this function, T is in Kelvin
 
-        T = this.STATVAR.T + 273.15; #convert from C to Kelvin
+        T = this.STATVAR.T .+ 273.15; #convert from C to Kelvin
         saltConc = this.STATVAR.saltConc;
         Tmelt = this.STATVAR.Tmelt; #in Kelvin
 
@@ -288,14 +290,22 @@ module CryoGridTempSaltFunctionalities
         saltConc_unfrozen = - 0.5 .* (T .- Tmelt_free_water) .* L_f ./ R ./ Tmelt_free_water .^2.0;
 
         #derivative wrt salt content
-        saltConc_left_bound  = minimum(saltConc .- delta, saltConc_unfrozen .- delta);
-        saltConc_right_bound = minimum(saltConc .+ delta, saltConc_unfrozen);
-        dliqWater_dsaltConc = (saltConc .< saltConc_unfrozen) .* (watercontent_temperature_salt(this, T, saltConc_left_bound) .- watercontent_temperature_salt(this, T, saltConc_right_bound)) ./(saltConc_left_bound .- saltConc_right_bound);
+        saltConc_left_bound  = min(saltConc .- delta, saltConc_unfrozen .- delta); #get minimum for every depth
+        saltConc_right_bound = min(saltConc .+ delta, saltConc_unfrozen);
+
+        theta_left_bound, Tmelt_left = watercontent_temperature_salt(this, T, saltConc_left_bound);
+        theta_right_bound, Tmelt_right = watercontent_temperature_salt(this, T, saltConc_right_bound);
+
+        dliqWater_dsaltConc = (saltConc .< saltConc_unfrozen) .* (theta_left_bound .- theta_right_bound) ./(saltConc_left_bound .- saltConc_right_bound);
 
         #derivative wrt temperature
-        T_left_bound = minminimum(T .- delta, Tmelt .- delta);
-        T_right_bound = minimum(T .+ delta, Tmelt);
-        dliqWater_dT = (T < Tmelt) .* (watercontent_temperature_salt(this, T_left_bound, saltConc) .- watercontent_temperature_salt(this, T_right_bound, saltConc)) ./ (T_left_bound .- T_right_bound);
+        T_left_bound = min(T .- delta, Tmelt .- delta);
+        T_right_bound = min(T .+ delta, Tmelt);
+
+        theta_left_bound, Tmelt_left = watercontent_temperature_salt(this, T_left_bound, saltConc);
+        theta_right_bound, Tmelt_right = watercontent_temperature_salt(this, T_right_bound, saltConc);
+
+        dliqWater_dT = (T < Tmelt) .* (theta_left_bound .- theta_right_bound) ./ (T_left_bound .- T_right_bound);
 
         return dliqWater_dT, dliqWater_dsaltConc
     end

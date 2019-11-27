@@ -49,7 +49,7 @@ module CryoGridInteractions
             this.PREVIOUS = [];
             this.NEXT = [];
 
-            this.get_boundary_condition_m = function(this::IA_HEAT)
+            this.get_boundary_condition_m = function(this::IA_HEAT_SALT)
                 #get the two classes involved
                 upperStratum = this.PREVIOUS;
                 lowerStratum = this.NEXT;

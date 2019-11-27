@@ -23,7 +23,7 @@ savename = "testlocation1_withSalt"
 # forcing variables are currently set in the focing class
 # initialize forcing
 forcing = Forcing_inundationHistory.forcing();
-forcing = forcing.initialize(forcing, 666, 2, 69.945, -134.0, -1000.0)
+forcing = forcing.initialize(forcing, 3, 2, 69.945, -134.0, -15000.0)
 forcing = forcing.load_forcing_from_mat(forcing);
 
 #initialize out

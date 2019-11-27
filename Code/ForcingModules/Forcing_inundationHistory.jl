@@ -29,7 +29,7 @@ mutable struct forcing
            this.PARA.T_IceSheet .= 0.0;
            this.PARA.IS .= 100.0;
            this.PARA.benthicSalt .= 989.63;
-           this.PARA.saltForcingSwitch .= 0;
+           this.PARA.saltForcingSwitch .= 1;
            this.PARA.latitude .= lat;
            this.PARA.longitude .= lon;
            this.PARA.altitude .= 14.634;
@@ -98,23 +98,23 @@ function generateForcing_testing(this::forcing)
 
         i_start = 1;
         #does this exist?
-        i_end = floor(length(forcingData)/3);
-        forcingData[i_start:i_end] = this.PARA.T_IceSheet;
-        coverage[i_start:i_end] = this.PARA.IS + 100.0;
-        surfaceState[i_start:i_end] = -1;
+        i_end = Int64(floor(length(forcingData)/3));
+        forcingData[i_start:i_end] .= this.PARA.T_IceSheet;
+        coverage[i_start:i_end] .= this.PARA.IS[1] + 100.0;
+        surfaceState[i_start:i_end] .= -1;
 
         i_start = i_end + 1;
         i_end = 2*i_end;
         forcingData[i_start:i_end] = LinRange(-17.0, -9.0, i_end - i_start+1);
-        coverage[i_start:i_end] = 0.0;
-        surfaceState[i_start:i_end] = 1;
+        coverage[i_start:i_end] .= 0.0;
+        surfaceState[i_start:i_end] .= 1;
 
         i_start = i_end + 1;
         i_end = length(forcingData);
-        forcingData[i_start:i_end] = LinRange(this.PARA.T_freeze, 0, i_end - i_start+1);
+        forcingData[i_start:i_end] = LinRange(this.PARA.T_freeze[1], 0, i_end - i_start+1);
         coverage[i_start:i_end] = LinRange(-30.0, -2.0, i_end - i_start+1);
-        surfaceState[i_start:i_end] = 0;
-        saltConcForcing[i_start:i_end] = this.PARA.benthicSalt;
+        surfaceState[i_start:i_end] .= 0;
+        saltConcForcing[i_start:i_end] .= this.PARA.benthicSalt;
 
         time_inundation = i_end - i_start + 1;
 
@@ -126,18 +126,18 @@ function generateForcing_testing(this::forcing)
 
     elseif testcase == 3 #zero temperature, saltConc change with ramp
 
-        i_start = floor(length(forcingData)/2.0);
+        i_start = Int64(floor(length(forcingData)/2.0));
         forcingData = 0.0 .*ones(size(this.DATA.timeForcing));
         coverage = zeros(size(this.DATA.timeForcing));
-        coverage[i_start:end] = 20.0;
+        coverage[i_start:end] .= 20.0;
         time_inundation = length(this.DATA.timeForcing) - i_start;
         surfaceState = ones(size(this.DATA.timeForcing));
-        surfaceState[i_start:end] = 0;
+        surfaceState[i_start:end] .= 0;
 
-        i_start = floor(length(forcingData)/3);
+        i_start = Int64(floor(length(forcingData)/3));
         i_end = 2*i_start;
-        saltConcForcing[i_start:i_end] = linspace(0,this.PARA.benthicSalt, i_end - i_start + 1);
-        saltConcForcing[i_end:end] = this.PARA.benthicSalt;
+        saltConcForcing[i_start:i_end] = LinRange(0,this.PARA.benthicSalt[1], i_end - i_start + 1);
+        saltConcForcing[i_end:end] .= this.PARA.benthicSalt;
 
     elseif testcase == 4 #subsea ramp
 
@@ -150,26 +150,29 @@ function generateForcing_testing(this::forcing)
 
     elseif testcase == 5 #zero temperature, saltConc change without ramp
 
-        i_start = floor(length(forcingData)/2);
+        i_start = Int64(floor(length(forcingData)/2));
         forcingData = -10.0 .* ones(size(this.DATA.timeForcing));
         coverage = zeros(size(this.DATA.timeForcing));
-        coverage[i_start:end] = 20.0;
+        coverage[i_start:end] .= 20.0;
         time_inundation = length(this.DATA.timeForcing) - i_start;
         surfaceState = ones(size(this.DATA.timeForcing));
-        surfaceState[i_start:end] = 0;
+        surfaceState[i_start:end] .= 0.0;
 
         saltConcForcing[i_start:end] .= this.PARA.benthicSalt;
 
     elseif testcase == 6 #rapid temperature and saltConc change
 
-        i_start = floor(length(forcingData)/6.0);
+        i_start = Int64(floor(length(forcingData)/6.0));
 
-        saltConcForcing[1:i_start] .= 0;
+        saltConcForcing[1:i_start] .= 0.0;
         saltConcForcing[i_start:end] .= this.PARA.benthicSalt;
 
         i_start = 2*i_start;
-        forcingData[1:i_start] = -10.0;
-        forcingData[i_start:end] = 0.0;
+        forcingData[1:i_start] .= -10.0;
+        forcingData[i_start:end] .= 0.0;
+
+    else
+        prinln("no such testcase!")
     end
 
     this.DATA.TForcing = forcingData;
