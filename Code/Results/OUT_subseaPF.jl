@@ -48,14 +48,14 @@ mutable struct OUT
             this.FORCING = deepcopy(forcing.DATA);
             depthInterp = -[-50.0:2.0:2000.0;]; #depth points that everything gets interpolated to
             timestamp = [this.TEMP.out_time[1] ./365.25:this.PARA.output_timestep[1]:this.PARA.save_time[1] ./365.25;]; #years for saving
-            emptyRes = NaN64 .* ones(length(depthInterp), length(timestamp));5
+            emptyRes = NaN64 .* ones(length(depthInterp), length(timestamp));
 
             this.RES = CryoGridTypes.outresults(timestamp,  depthInterp, deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes), deepcopy(emptyRes));
 
             return this
         end
 
-        this.store_out = function(this::OUT, t, TOP, BOTTOM, forcing, savename)
+        this.store_out = function(this::OUT, t, TOP, BOTTOM, forcing, savename::String)
             #check if run is without errors
             if isnan(mean(TOP.NEXT.STATVAR.T))
                 println(string("Time is ", floor(t[1]/365.25), " - temperature is NAN - terminating!"))
@@ -122,7 +122,8 @@ mutable struct OUT
                 this.RES.c_eff[:,out_index] = reverse(matlab.interp1(reverse(midpointDepth), reverse(c_eff), reverse(this.RES.depthInterp), "linear", NaN))
                 this.RES.liqWater[:,out_index] = reverse(matlab.interp1(reverse(midpointDepth), reverse(liqWater), reverse(this.RES.depthInterp), "linear", NaN))
 
-                if t==this.TEMP.save_time || this.BREAK == true
+                if t==this.TEMP.save_time || this.BREAK == true && ~(savename=="")
+                    #if savename is empty, don't save the results
 
                     this.RUNINFO.endtime .= time() .- this.RUNINFO.starttime;
 

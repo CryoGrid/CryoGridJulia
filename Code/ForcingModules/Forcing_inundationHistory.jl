@@ -29,7 +29,7 @@ mutable struct forcing
            this.PARA.T_IceSheet .= 0.0;
            this.PARA.IS .= 100.0;
            this.PARA.benthicSalt .= 989.63;
-           this.PARA.saltForcingSwitch .= 1;
+           this.PARA.saltForcingSwitch .= 1; # 0 to switch off salt Forcing
            this.PARA.latitude .= lat;
            this.PARA.longitude .= lon;
            this.PARA.altitude .= 14.634;

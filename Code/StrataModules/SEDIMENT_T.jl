@@ -109,8 +109,7 @@ mutable struct stratum
         this.get_timestep = function(this::stratum)
             courant_number = minimum(0.5 * this.STATVAR.c_eff./this.STATVAR.thermCond[1:end-1] .* (this.STATVAR.layerThick).^2);
             timestep = courant_number/(3600.0*24.0); #convert estimate from seconds to days
-            timestep = max(timestep, 1) #no time steps smaller than 1 day
-
+            #timestep = max(timestep, 1) #no time steps smaller than 1 day
             return timestep
         end
 
