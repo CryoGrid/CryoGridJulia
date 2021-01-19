@@ -6,6 +6,7 @@ include("../StrataModules/CryoGridConstants.jl")
 include("CryoGridTempSaltFunctionalities.jl")
 include("../Common/CryoGridTypes.jl")
 using MAT
+using Statistics
 
 
 mutable struct stratum
@@ -20,7 +21,7 @@ mutable struct stratum
     IA_PREVIOUS #pointer to interaction with previous stata
     IA_NEXT #pointer to interaction with next stratum
 
-    #mandatory functions
+    #mandatory functionsinitializeFromFile::Function
     initialize::Function
     initialize_statvar::Function
     get_boundary_condition_u::Function
@@ -31,6 +32,7 @@ mutable struct stratum
     advance_prognostic::Function
     compute_diagnostic::Function
     child::Function
+    initializeFromFile::Function
 
     #-------------------------------------------------------------------------------
     #mandatory functions for each class
@@ -40,7 +42,7 @@ mutable struct stratum
         this.CONST = CryoGridTypes.constants([0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
         this.PARA = CryoGridTypes.parameter([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0],[0.0], [0.0],[0.0], [0.0], [0.0])
         this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
-        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
+        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [1])
 
         #initialize stratum
         this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=vec(2 .*ones(1,500)))
@@ -63,6 +65,62 @@ mutable struct stratum
             return this
         end
 
+        #initialize stratum from file
+        #don't use initialize_STATVAR with this, that is already included
+        this.initializeFromFile = function(this::stratum, parameters)
+            initialize_CONST(this);
+            initialize_PARA(this);
+
+            midpoints = parameters[:,1];
+            layers = midpoints + 0.5 .* [-(midpoints[1:end-1]-midpoints[2:end]); -(midpoints[end-1] - midpoints[end])];
+            layers = [midpoints[1] + 0.5 .*(midpoints[1]-midpoints[2]); layers];
+
+            if layers[end] >= 0.0
+                this.STATVAR.upperPos .= -layers[1];
+                this.STATVAR.lowerPos .= -layers[end];
+            else
+                this.STATVAR.upperPos .= layers[1];
+                this.STATVAR.lowerPos .= layers[end];
+            end
+
+            this.STATVAR.layerThick = abs.(layers[2:end] - layers[1:end-1]);
+
+            this.STATVAR.soilType = parameters[:,6];
+            this.STATVAR.mineral = parameters[:,2];
+            this.STATVAR.organic = parameters[:,4];
+            this.STATVAR.saltConc = parameters[:,5];
+            this.STATVAR.porosity = parameters[:,3];
+            this.STATVAR.water = 1.0 .- this.STATVAR.organic .- this.STATVAR.mineral;
+
+            this.PARA.alpha   = [4.06] .* parameters[:,10] .+ [6.5e-1] .* -(parameters[:,10] .- 1);
+            this.PARA.n       = [2.03] .* parameters[:,10] .+ [1.67] .* -(parameters[:,10] .- 1);
+
+            # make sure Tmelt is in Kelvin
+            if mean(parameters[:,9]) <= 0 #then the values are in degree C
+                this.STATVAR.Tmelt = parameters[:,9] .+ 273.15;
+            else
+                this.STATVAR.Tmelt = parameters[:,9]
+            end
+
+            this.PARA.a = parameters[:,7];
+            this.PARA.b = parameters[:,8];
+
+            #Calculate initial condition T0
+            T = CryoGridTempSaltFunctionalities.steadyState(this); #steady state
+            #or spinup - put that here
+            this.STATVAR.T = T;  #[degree C]
+
+            #conductivity, heat capacity and liquid water content
+            saltDiff, thermCond, c_eff = CryoGridTempSaltFunctionalities.getThermalProps_wSalt(this);
+
+            #update struct
+            this.STATVAR.saltDiff = saltDiff;
+            this.STATVAR.thermCond = thermCond;
+            this.STATVAR.c_eff = c_eff;
+
+            return this
+        end
+
         #initialize state variable, such as steady state
         this.initialize_statvar = function(this::stratum)
             initialize_STATVAR(this);
@@ -78,14 +136,20 @@ mutable struct stratum
             layerThick = this.STATVAR.layerThick;
             T = this.STATVAR.T;
 
+            #get uppermostGridCell
+            #is always 1 if not read from file (version 2017)
+            this.TEMP.uppermostGridCell = forcing.TEMP.uppermostGridCell;
+
+            upperIndex = min(this.TEMP.uppermostGridCell[1], length(T)[1]); #we need to useC4D28500 this function before T was initialized as a vector.
+
             #calculate resulting flux and save temporary variables for conductivity and spatial derivative calculations
-            this.TEMP.T_ub = T_ub; #for conductivity
-            this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0);#for spatial derivative
+            this.TEMP.T_ub = T_ub; #for conductivity and initial steady state
+            this.TEMP.heatFlux_ub = thermCond[upperIndex]*(T[upperIndex] .- T_ub) / abs(layerThick[upperIndex] ./ 2.0);#for spatial derivative
 
             if forcing.TEMP.saltConcForcing[1] == 0.0
                 saltFlux_ub = 0.0;
             else
-                saltFlux_ub = this.STATVAR.saltDiff[1] .* (this.STATVAR.saltConc[1] .- forcing.TEMP.saltConcForcing[1]) ./ abs(this.STATVAR.layerThick[1] ./2.0);
+                saltFlux_ub = this.STATVAR.saltDiff[upperIndex] .* (this.STATVAR.saltConc[upperIndex] .- forcing.TEMP.saltConcForcing[1]) ./ abs(this.STATVAR.layerThick[upperIndex] ./2.0);
             end
 
             this.TEMP.saltFlux_ub = [saltFlux_ub];
@@ -119,7 +183,8 @@ mutable struct stratum
             courant_number_salt = minimum(0.5 * 1 ./ this.STATVAR.saltDiff[1:end-1] .* (this.STATVAR.layerThick).^2);
             timestep_min_salt = this.PARA.dsaltConc_max[1] ./ maximum(this.TEMP.divsaltConc);
             timestep = min(courant_number_salt, courant_number_temperature, timestep_min_salt)/(3600.0*24.0);
-            timestep = max(timestep, 1) #no time steps smaller than 1 day
+            #println(timestep)
+            #timestep = max(timestep, 1) #no time steps smaller than 1 day
             #convert estimate from seconds to days
 
             return timestep
@@ -169,7 +234,7 @@ function initialize_PARA(this::stratum)
 end
 
 function initialize_STATVAR(this::stratum)
-    midptDepth = this.STATVAR.upperPos[1] .+ this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1);
+    midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .-  cumsum(this.STATVAR.layerThick, dims=1);
 
     #calculate porosity
     porosityZero = 1.0 .- (this.STATVAR.mineral + this.STATVAR.organic);
@@ -187,11 +252,11 @@ function initialize_STATVAR(this::stratum)
     this.STATVAR.saltConc = this.STATVAR.saltConc .* ones(size(porosity));
 
     if this.STATVAR.soilType[1] == 0 #silt
-        this.PARA.alpha   .= [6.5e-1];
-        this.PARA.n       .= [1.67];
+        this.PARA.alpha   = [6.5e-1] .* ones(size(porosity));
+        this.PARA.n       = [1.67] .* ones(size(porosity));
     else #sand
-        this.PARA.alpha   .= [4.06];
-        this.PARA.n       .= [2.03];
+        this.PARA.alpha   = [4.06] .* ones(size(porosity));
+        this.PARA.n       = [2.03] .* ones(size(porosity));
     end
 
     #calculate state variables that depend on the more constant ones
@@ -239,11 +304,18 @@ function get_derivative_temperature_salt(this)
 
     #heat flux divergence
     div_F_T = zeros(size(T));
+
+    #above current uppermost Gridcell
+    uppermostGridCell = this.TEMP.uppermostGridCell[1];
+    @inbounds for i=1:uppermostGridCell-1
+        div_F_T[i]=thermCond[i]*(this.TEMP.T_ub[1] .- T[i]) ./ midptThick[i] .- T_flux_ub[1] ./ layerThick[i];
+    end
+
     #upper boundary condition and assuming that k constant near the boundary
-    div_F_T[1]= (thermCond[2] .* (T[2] .- T[1]) ./ midptThick[1] .- T_flux_ub[1]) ./ layerThick[1];
+    div_F_T[uppermostGridCell]= (thermCond[uppermostGridCell+1] .* (T[uppermostGridCell+1] .- T[uppermostGridCell]) ./ midptThick[uppermostGridCell] .- T_flux_ub[1]) ./ layerThick[uppermostGridCell];
 
     #use FD for 2nd derivation in space
-    div_F_T[2:end-1]=  (thermCond[3:end-1] .* (T[3:end] .- T[2:end-1]) ./ midptThick[2:end] .- thermCond[2:end-2] .* (T[2:end-1] .- T[1:end-2]) ./ midptThick[1:end-1]) ./ layerThick[2:end-1];
+    div_F_T[uppermostGridCell+1:end-1]=  (thermCond[uppermostGridCell+2:end-1] .* (T[uppermostGridCell+2:end] .- T[uppermostGridCell+1:end-1]) ./ midptThick[uppermostGridCell+1:end] .- thermCond[uppermostGridCell+1:end-2] .* (T[uppermostGridCell+1:end-1] .- T[uppermostGridCell:end-2]) ./ midptThick[uppermostGridCell:end-1]) ./ layerThick[uppermostGridCell+1:end-1];
 
     #lower BC (dT_dt=geothermal heat flux) and assuming that k constant near the boundary
     div_F_T[end]= (T_flux_lb[1] .- thermCond[end-1] .* (T[end] .- T[end-1]) ./ midptThick[end]) ./layerThick[end];
@@ -251,11 +323,16 @@ function get_derivative_temperature_salt(this)
 
     #ion flux divergence
     div_F_saltConc = zeros(size(div_F_T));
+
+    @inbounds for i=1:uppermostGridCell-1
+        div_F_saltConc[i] = (saltDiff[i+1] .* (saltConc[i+1] .- saltConc[i]) ./ midptThick[i] .- saltFlux_ub[1]) ./layerThick[i];
+    end
+
     #upper boundary condition and assuming that k constant near the boundary
-    div_F_saltConc[1]= (saltDiff[2] .* (saltConc[2] .- saltConc[1]) ./ midptThick[1] .- saltFlux_ub[1]) ./layerThick[1];
+    div_F_saltConc[uppermostGridCell]= (saltDiff[uppermostGridCell+1] .* (saltConc[uppermostGridCell+1] .- saltConc[uppermostGridCell]) ./ midptThick[uppermostGridCell] .- saltFlux_ub[1]) ./layerThick[uppermostGridCell];
 
     #use FD for 2nd derivation in space
-    div_F_saltConc[2:end-1] = (saltDiff[3:end-1] .* (saltConc[3:end] .- saltConc[2:end-1]) ./midptThick[2:end] .- saltDiff[2:end-2] .* (saltConc[2:end-1] .- saltConc[1:end-2]) ./ midptThick[1:end-1]) ./layerThick[2:end-1];
+    div_F_saltConc[uppermostGridCell+1:end-1] = (saltDiff[uppermostGridCell+2:end-1] .* (saltConc[uppermostGridCell+2:end] .- saltConc[uppermostGridCell+1:end-1]) ./midptThick[uppermostGridCell+1:end] .- saltDiff[uppermostGridCell+1:end-2] .* (saltConc[uppermostGridCell+1:end-1] .- saltConc[uppermostGridCell:end-2]) ./ midptThick[uppermostGridCell:end-1]) ./layerThick[uppermostGridCell+1:end-1];
 
     #lower BC zero flux and assuming that D_C constant near the boundary
     div_F_saltConc[end] = (saltFlux_lb[1] .- saltDiff[end-1] .* (saltConc[end] .- saltConc[end-1]) ./ midptThick[end]) ./layerThick[end];

@@ -16,7 +16,7 @@ module CryoGridTempSaltFunctionalities
         a = a_silt .*(this.STATVAR.soilType .== 1) + a_sand .*(this.STATVAR.soilType .== 0);
         b = b_silt .*(this.STATVAR.soilType .== 1) + b_sand .*(this.STATVAR.soilType .== 0);
 
-        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt) .+ [273.15];
+        Tmelt = this.CONST.Tmelt ./ this.CONST.L_f .* (-this.CONST.R .* this.STATVAR.saltConc.*this.CONST.Tmelt) .+ [273.15]; #in Kelvin
 
         return Tmelt, a, b
     end
@@ -31,26 +31,37 @@ module CryoGridTempSaltFunctionalities
 
         if ~hasfield(typeof(this.PREVIOUS), :STATVAR)
             TForcing = this.TEMP.T_ub;
+            println("Initial forcing temperature for steady state")
+            println(TForcing)
         else
             TForcing = this.PREVIOUS.STATVAR.T[length(this.PREVIOUS.STATVAR.T)];
         end
 
         Q = this.PARA.heatFlux_lb;
+        try
+            Q = this.TEMP.heatFlux_lb;
+        catch
+            #
+        end
+
 
         midpoints = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] / 2.0 .- cumsum(this.STATVAR.layerThick);
 
         Tmelt = this.STATVAR.Tmelt; #in Kelvin
         Tmelt_inDegreeC = Tmelt .- 273.15; #convert to °C to compare against temperatures.
 
-        #allocate memory
-        T_0 = zeros(size(midpoints));
-        #apply forcing to surface
-        T_0[1] = TForcing[1]; #TForcing is a Vector with 1 element
+        #allocate memory and apply forcing to surface and ghost cells
+        T_0 = TForcing[1].*ones(size(midpoints)); #TForcing is a Vector with 1 element
 
-        @inbounds for i = 2:length(T_0)
+        k = ones(size(midpoints))
+        theta = ones(size(midpoints))
+        uppermostGridCell = this.TEMP.uppermostGridCell[1];
+
+        @inbounds for i = uppermostGridCell + 1 :length(T_0)
             T = T_0[i-1];
 
-            a1 = 1.0 ./ this.STATVAR.porosity[i] - this.PARA.a[i] .* Tmelt_inDegreeC[i] - this.PARA.b[i] .* Tmelt_inDegreeC[i].^2.0;
+            a1 = 1.0 ./ this.STATVAR.porosity[i] - this.PARA.a[i] .* Tmelt[i] - this.PARA.b[i] .* Tmelt[i].^2.0;
+            #a1 = 1.0 ./ this.STATVAR.porosity[i] - this.PARA.a[i] .* Tmelt_inDegreeC[i] - this.PARA.b[i] .* Tmelt_inDegreeC[i].^2.0;
 
             if T < Tmelt_inDegreeC[i]
                 liqWater = (1.0 ./ (a1 + this.PARA.a[i] .* T + this.PARA.b[i] .* T.^2.0));
@@ -60,9 +71,28 @@ module CryoGridTempSaltFunctionalities
 
             thermCond = (liqWater .* sqrt.(k_water) + (this.STATVAR.porosity[i] - liqWater) .* sqrt.(k_ice) + this.STATVAR.mineral[i]*sqrt.(k_mineral) + this.STATVAR.organic[i]*sqrt.(k_organic)).^2.0;
 
+            k[i] = thermCond[1];
+            theta[i] = liqWater;
+
         	T_0[i] = T_0[i-1] .- 1.0 ./ thermCond[1] .* Q[1] .* (midpoints[i] .- midpoints[i-1]);
         end
 
+
+        if true
+            f = matopen("InitValues.mat", "w")
+            write(f, "T0", T_0)
+            write(f, "thermCond", k)
+            write(f, "liqWater", theta)
+            write(f, "porosity", this.STATVAR.porosity)
+            write(f, "midpoints", midpoints)
+            write(f, "Q", Q)
+            write(f, "mineral", this.STATVAR.mineral)
+            write(f, "organic", this.STATVAR.organic)
+            write(f, "Tmelt_inDegreeC", Tmelt_inDegreeC)
+            write(f, "Tmelt", Tmelt)
+
+            close(f)
+        end
         return T_0
     end
 
@@ -92,6 +122,7 @@ module CryoGridTempSaltFunctionalities
         Tmelt = this.STATVAR.Tmelt; #in Kelvin
         Tmelt_inDegreeC = Tmelt .- 273.15; #convert to °C to compare against temperatures.
 
+
         #temperature and upper boundary
         T_ub = this.TEMP.T_ub;
         T = this.STATVAR.T;
@@ -101,7 +132,7 @@ module CryoGridTempSaltFunctionalities
         #-------------- assign thermal conductivity -------------------------%
         #conductivity lives on the edges
         #interpolate liqWater to the edges
-        layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick)];
+        layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick,dims=1)];
         thermCond = zeros(size(layerDepth));
 
         #calculate for upper boundary
@@ -146,7 +177,7 @@ module CryoGridTempSaltFunctionalities
         #Heat Capacity lives on the midpoints of the cells
         c_eff = zeros(size(this.STATVAR.layerThick));
         liqWater = zeros(size(this.STATVAR.layerThick));
-        midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
+        midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick,dims=1);
 
         @inbounds for i = 1:length(midptDepth)
             a1 = 1.0 / porosity[i] - a[i]* abs(Tmelt_inDegreeC[i])^b[i];
@@ -158,7 +189,7 @@ module CryoGridTempSaltFunctionalities
                 liqWater[i] = porosity[i];
             end
 
-            if T[i] <= Tmelt_inDegreeC[i]
+            if T[i] < Tmelt_inDegreeC[i] #change from <= to < to avoid T[i] == 0.0
                 d_liqWater = a[i] * b[i] * abs(T[i])^(b[i] - 1.0) / (a1 + a[i]*abs(T[i])^b[i]) / (a1 + a[i]*abs(T[i])^b[i]);
             else
                 d_liqWater = 0.0;
@@ -268,7 +299,8 @@ module CryoGridTempSaltFunctionalities
         water_pot = water_pot .* (water_pot .< 0.0);
         #this is needed to get unchanged water contents above Tmelt
 
-        liqWater = theta_sat ./ (1.0 .+ (alpha[1] .* abs.(water_pot)) .^n[1]) .^(1.0 .- 1.0 ./n[1]);
+
+        liqWater = theta_sat ./ (1.0 .+ (alpha .* abs.(water_pot)) .^n) .^(1.0 .- 1.0 ./n);
         #this is the final formula, but waterPot depends also on liqWater, so it's a
         #coupled eq. system
 

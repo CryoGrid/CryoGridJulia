@@ -8,6 +8,7 @@ include("../StrataModules/CryoGridConstants.jl")
 include("CryoGridTempSaltFunctionalities.jl")
 include("../Common/CryoGridTypes.jl")
 using MAT
+using Statistics
 
 
 mutable struct stratum
@@ -33,6 +34,7 @@ mutable struct stratum
     advance_prognostic::Function
     compute_diagnostic::Function
     child::Function
+    initializeFromFile::Function
 
     #-------------------------------------------------------------------------------
     #mandatory functions for each class
@@ -42,7 +44,7 @@ mutable struct stratum
         this.CONST = CryoGridTypes.constants([0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
         this.PARA = CryoGridTypes.parameter([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0],[0.0], [0.0],[0.0], [0.0], [0.0])
         this.STATVAR = CryoGridTypes.statvar([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
-        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0])
+        this.TEMP = CryoGridTypes.temporary([0.0], [0.0], [0.0], [0.0],[0.0], [0.0], [0.0], [0.0], [1])
 
         #initialize stratum
         this.initialize = function(this::stratum, sedimenttype, upperPos::Float64=0.0, lowerPos::Float64=-1000.0, layerThick=2.0)
@@ -51,6 +53,7 @@ mutable struct stratum
 
             this.STATVAR.upperPos .= upperPos;
             this.STATVAR.lowerPos .= lowerPos;
+
             if length(layerThick) > 1.0
                 this.STATVAR.layerThick = layerThick;
             else
@@ -72,6 +75,60 @@ mutable struct stratum
             return this
         end
 
+        #initialize stratum from file
+        #don't use initialize_STATVAR with this, that is already included
+        this.initializeFromFile = function(this::stratum, parameters)
+            initialize_CONST(this);
+            initialize_PARA(this);
+
+            midpoints = parameters[:,1];
+            layers = midpoints + 0.5 .* [-(midpoints[1:end-1]-midpoints[2:end]); -(midpoints[end-1] - midpoints[end])];
+            layers = [midpoints[1] + 0.5 .*(midpoints[1]-midpoints[2]); layers];
+
+            if layers[end] >= 0.0
+                this.STATVAR.upperPos .= -layers[1];
+                this.STATVAR.lowerPos .= -layers[end];
+            else
+                this.STATVAR.upperPos .= layers[1];
+                this.STATVAR.lowerPos .= layers[end];
+            end
+
+            this.STATVAR.layerThick = abs.(layers[2:end] - layers[1:end-1]);
+
+            this.STATVAR.soilType = parameters[:,6];
+            this.STATVAR.mineral = parameters[:,2];
+            this.STATVAR.organic = parameters[:,4];
+            this.STATVAR.saltConc = parameters[:,5];
+            this.STATVAR.porosity = parameters[:,3];
+            this.STATVAR.water = 1.0 .- this.STATVAR.organic .- this.STATVAR.mineral;
+
+            # make sure Tmelt is in Kelvin
+            if mean(parameters[:,9]) <= 0 #then the values are in degree C
+                this.STATVAR.Tmelt = parameters[:,9] .+ 273.15;
+            else
+                this.STATVAR.Tmelt = parameters[:,9]
+            end
+
+            this.PARA.a = parameters[:,7];
+            this.PARA.b = parameters[:,8];
+
+            #Calculate initial condition T0
+            T = CryoGridTempSaltFunctionalities.steadyState(this); #steady state
+            #or spinup - put that here
+            this.STATVAR.T = T;  #[degree C]
+
+            #conductivity, heat capacity and liquid water content
+            this = CryoGridTempSaltFunctionalities.getThermalProps_noSaltDiffusion(this);
+            return this
+        end
+
+        #initialize state variable, such as steady state
+        this.initialize_statvar = function(this::stratum)
+            initialize_STATVAR(this);
+
+            return this
+        end
+
         #get boundary condition if this is the upper element of the stratigrahy
         this.get_boundary_condition_u = function(this::stratum, forcing) #functions specific for individual class, allow changing from Dirichlet to SEB
             #dirichlet condition with forcing temperature
@@ -79,11 +136,15 @@ mutable struct stratum
             thermCond = this.STATVAR.thermCond;
             layerThick = this.STATVAR.layerThick;
             T = this.STATVAR.T;
+            #get uppermostGridCell
+            #is always 1 if not read from file (version 2017)
+            this.TEMP.uppermostGridCell = forcing.TEMP.uppermostGridCell;
+
+            upperIndex = min(this.TEMP.uppermostGridCell[1], length(T)[1]); #we need to use this function before T was initialized as a vector.
 
             #calculate resulting flux and save temporary variables for conductivity and spatial derivative calculations
-            this.TEMP.T_ub = T_ub; #for conductivity
-            this.TEMP.heatFlux_ub = thermCond[1]*(T[1] .- T_ub) / abs(layerThick[1] ./ 2.0);#for spatial derivative
-
+            this.TEMP.T_ub = T_ub; #for conductivity and initial steady state
+            this.TEMP.heatFlux_ub = thermCond[upperIndex]*(T[upperIndex] .- T_ub) / abs(layerThick[upperIndex] ./ 2.0);#for spatial derivative
             return this
         end
 
@@ -101,7 +162,6 @@ mutable struct stratum
         #calculate spatial derivative
         this.get_derivatives_prognostic = function(this::stratum)
             this.TEMP.divT = get_derivative_temperature_only(this); #this gives a vector
-
             return this
         end
 
@@ -116,7 +176,6 @@ mutable struct stratum
         #calculate advance in time of state variables
         this.advance_prognostic = function(this::stratum, timestep::Float64) #real timestep derived as minimum of several classes in days
             timestep = timestep*3600.0*24.0; #convert timestep from days to seconds
-
             this.STATVAR.T = this.STATVAR.T + timestep .* this.TEMP.divT;
 
             return this
@@ -163,7 +222,6 @@ function initialize_STATVAR(this::stratum)
     porosityZero = 1.0 .- (this.STATVAR.mineral + this.STATVAR.organic);
     bulkDensityZero = 1.0 ./ ((porosityZero .+ 0.6845) ./ 1.8);
     bulkDensity = bulkDensityZero .+ 0.0037 .* abs.(midptDepth) .^ 0.766; #abs to avoid imaginary numbers!
-
     porosity = 1.80 .* bulkDensity .^ (-1.0) .- 0.6845;
     porosity[porosity .< 0.03] .= 0.03;
 
@@ -192,16 +250,16 @@ function initialize_STATVAR(this::stratum)
 end
 
 function get_derivative_temperature_only(this::stratum)
-
     #Read relevant data from this struct
     heatFlux_ub = this.TEMP.heatFlux_ub;    #should be generated in this.get_boundary_condition_u
+    T_ub = this.TEMP.T_ub;
                                             #or in the interaction
     Q = this.TEMP.heatFlux_lb;              #should be generated in this.get_boundary_condition_l
                                             #or in the interaction
     T = this.STATVAR.T;
 
-    layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick)];
-    midptDepth = this.STATVAR.upperPos .- this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick);
+    layerDepth = [this.STATVAR.upperPos; this.STATVAR.upperPos .- cumsum(this.STATVAR.layerThick,dims=1)];
+    midptDepth = this.STATVAR.upperPos .+ this.STATVAR.layerThick[1] ./ 2.0 .- cumsum(this.STATVAR.layerThick,dims=1);
 
     #determine bulk capacity and capacity
     c_temp = this.STATVAR.c_eff;
@@ -219,23 +277,29 @@ function get_derivative_temperature_only(this::stratum)
     #where i is the position at a cell-midpoint, i.e. on midptDepth
     #and i +- 1/2 is the position at the cell-edge, i.e. on layerDepth
 
+    #GhostCells above uppermostGridCell
+    uppermostGridCell = this.TEMP.uppermostGridCell[1];
+
+    @inbounds for i=1:uppermostGridCell-1
+        divT[i]= thermCond[i]/c_temp[i]*(T_ub[1] .- T[i]) ./abs(layerDepth[i+1] .- layerDepth[i])^2;
+    end
+
     #upper boundary condition
     #T(0) = TForcing
     #T(0) lives not on the midpoint of a ghost-cell,
     #but on the upper edge, hence the different deltaZ
-    i = 1;
-
+    i = uppermostGridCell;
     divT[i] = (1.0 ./ c_temp[i]) * ( #conductivity of cell
                             thermCond[i+1]*(T[i+1] .- T[i]) ./ abs(midptDepth[i+1] .- midptDepth[i]) .- #flux lower edge of cell
                             heatFlux_ub[1]) ./ #flux upper edge of cell
-                    abs(layerDepth[i+1] .- layerDepth[i]); #size of cell
+                            abs(layerDepth[i+1] .- layerDepth[i]); #size of cell
 
     #derivative for soil
-    @inbounds for i = 2:length(midptDepth) - 1
+    @inbounds for i = uppermostGridCell+1:length(midptDepth) - 1
         divT[i]=(1.0 / c_temp[i]) * (
                             thermCond[i+1] * (T[i+1] - T[i]) / abs(midptDepth[i+1] - midptDepth[i]) - #flux lower edge
                             thermCond[i] * (T[i] - T[i-1]) / abs(midptDepth[i] - midptDepth[i-1])) / #flux upper edge
-                    abs(layerDepth[i+1] - layerDepth[i]); #size of cell
+                            abs(layerDepth[i+1] - layerDepth[i]); #size of cell
     end
 
     #lower boundary condition

@@ -14,11 +14,13 @@ mutable struct forcing
     interpolate_forcing::Function
     initalize_from_file::Function
     load_forcing_from_mat::Function
+    initializeFromFile::Function
+
 
     function forcing()
         this = new()
-        this.DATA = CryoGridTypes.forcingdata([0.0], [0.0], [0.0], [0.0], [0.0], [0.0]);
-        this.TEMP = CryoGridTypes.forcingtemporary([0.0], [0.0], [0.0]);
+        this.DATA = CryoGridTypes.forcingdata([0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0]);
+        this.TEMP = CryoGridTypes.forcingtemporary([0.0], [0.0], [0.0], [1]);
         this.PARA = CryoGridTypes.forcingparameter([0], [0], [0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0]);
 
 
@@ -43,6 +45,47 @@ mutable struct forcing
            return this
         end
 
+        this.initializeFromFile = function(this::forcing, SL_no::Int64=3, TF_no::Int64=2, lat::Float64=69.945, lon::Float64=-134.0, timeStamp::Array{Float64,1}=[0.0], forcingData::Array{Float64,1}=[0.0], surfaceState::Array{Float64,1}=[0.0], uppermostGridCell::Array{Int64,1}=[0])
+           this.PARA.SL_no .= SL_no; #2
+           this.PARA.TF_no .= TF_no; #3;
+           this.PARA.T_freeze .= -1.6;
+           this.PARA.T_IceSheet .= 0.0;
+           this.PARA.IS .= 100.0;
+           this.PARA.benthicSalt .= 989.63;
+           this.PARA.saltForcingSwitch .= 0; # 0 to switch off salt Forcing
+           this.PARA.latitude .= lat;
+           this.PARA.longitude .= lon;
+           this.PARA.altitude .= 14.634;
+           this.PARA.heatFlux_lb .= 0.05;
+           this.PARA.startForcing .= timeStamp[1];
+           this.PARA.dtForcing .= abs(timeStamp[2]-timeStamp[1]);
+           this.PARA.endForcing .= timeStamp[end];
+
+           #calculate time in days for the main programm
+           this.PARA.start_time .= this.PARA.startForcing .* 365.25;
+           this.PARA.end_time .= this.PARA.endForcing .*365.25;
+
+           this.PARA.domain_depth .= 10000.0; #?
+
+           #overwrite given altitude and heat flux by values from EaseGrid
+           #and Davies et. al. respectively
+           this.PARA.altitude .= CryoGridInputDataSets.getElevation(this.PARA.latitude, this.PARA.longitude);
+           this.PARA.heatFlux_lb .= CryoGridInputDataSets.getQ_Davies(this.PARA.latitude, this.PARA.longitude);
+
+           #write forcingData to data struct
+           this.DATA.TForcing = forcingData;
+           this.DATA.timeForcing = timeStamp;
+
+           #this.DATA.coverage = coverage;
+           #this.DATA.time_inundation = time_inundation;
+           this.DATA.surfaceState = surfaceState;
+           this.DATA.uppermostGridCell = uppermostGridCell;
+
+           this.DATA.saltConcForcing = zeros(size(forcingData));
+
+           return this
+        end
+
         this.load_forcing_from_mat = function(this::forcing)
            #addpath(genpath('forcing'))
 
@@ -57,9 +100,7 @@ mutable struct forcing
                this = generateForcing_fromData(this);
            end
 
-           #println("generated Forcing data")
-           #println([this.DATA.timeForcing[1], this.DATA.timeForcing[20], this.DATA.timeForcing[end - 20], this.DATA.timeForcing[end]])
-           #println([this.DATA.TForcing[1], this.DATA.TForcing[20], this.DATA.TForcing[end - 20], this.DATA.TForcing[end]])
+           this.DATA.uppermostGridCell = [1]; #default, no sedimentation yet
 
            #calculate time in days for the main programm
            this.PARA.start_time .= this.PARA.startForcing .* 365.25;
@@ -74,6 +115,12 @@ mutable struct forcing
            #forcing.TEMP.surfaceState = matlab.interp1(forcing.DATA.timeForcing, forcing.DATA.surfaceState, t, 'nearest');
 
            this.TEMP.saltConcForcing = matlab.interp1(this.DATA.timeForcing, this.DATA.saltConcForcing, t, "nearest");
+
+           if ~(this.DATA.uppermostGridCell[1] == 1) # read sedimentation from file
+               this.TEMP.uppermostGridCell = matlab.interp1(this.DATA.timeForcing, this.DATA.uppermostGridCell, t, "nearest");
+           else
+               this.TEMP.uppermostGridCell = [1];
+           end
 
            return this
         end
