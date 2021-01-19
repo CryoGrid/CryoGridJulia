@@ -5,7 +5,7 @@ function display_Results(savename, plotdepth)
 %think about a better was to display results - maybe surf or patch?
 
 if nargin <1
-    savename = 'testlocation1_50k';
+    savename = 'inversion_subsea_1_24';
 end
 if nargin < 2
     plotdepth = -800;
@@ -13,6 +13,17 @@ end
 
 load(strcat(savename, filesep, savename, '.mat'));
 
+%if we forgot to set the switch for saltConcForcing to 0 for modules
+%without salt
+% porosityZero=1-(0.6);
+% bulkDensityZero=1./((porosityZero+0.6845)/1.8);
+% cT_grid = abs(RESULTS.depthInterp);
+% bulkDensity =bulkDensityZero + 0.0037.*cT_grid.^0.766;
+% porosity=1.80.*bulkDensity.^(-1)-0.6845;
+% porosity(porosity<0.03)=0.03;
+% RESULTS.saltConc = RESULTS.saltConc./porosity .*RESULTS.liqWater;
+
+%save(strcat(savename, filesep, savename, '.mat'), 'FORCING', 'PARA', 'RESULTS', 'RUNINFO')
 
 Time = RESULTS.time;
 master_midpoints = RESULTS.depthInterp; %think about this. Needs to adapt somehow to the upperPos of the first module
@@ -27,9 +38,11 @@ liqWater = RESULTS.liqWater;
 thermCond = RESULTS.thermCond;
 c_eff = RESULTS.c_eff;
 
-layerThick = master_midpoints(2:end) - master_midpoints(1:end-1);
+layerThick = abs(master_midpoints(2:end) - master_midpoints(1:end-1));
 saltConc_m = (saltConc(1:end-1,:) + saltConc(2:end,:) ) / 2;
 liqWater_m = (liqWater(1:end-1,:) + liqWater(2:end,:) ) / 2;
+saltConc_m(isnan(saltConc_m)) = 0;
+liqWater_m(isnan(liqWater_m)) = 0;
 totalSalt = sum(saltConc_m.*liqWater_m.*repmat(layerThick, 1, length(Time)), 1);
 
 
@@ -118,7 +131,7 @@ pos = get(gca, 'Position');
 set(gca, 'Position', [pos(1) pos(2) pos0(3) pos(4)]);
 
 
-saveas(gcf, fullfile(savename, strcat(savename, '_julia_noSalt_results_overview.png')))
+saveas(gcf, fullfile(savename, strcat(savename, '_julia_withSalt_results_overview.png')))
 
 
 fprintf('Timesteps: %.0f \n', RUNINFO.timesteps);

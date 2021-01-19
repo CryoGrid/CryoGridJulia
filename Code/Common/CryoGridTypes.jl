@@ -89,6 +89,7 @@ mutable struct temporary # 8 Array{Float64,1}
     saltFlux_lb::Array{Float64,1}
     divT::Array{Float64,1}
     divsaltConc::Array{Float64,1}
+    uppermostGridCell::Array{Int64,1}
 end
 
 struct forcingparameter # 3 Array{int64,1}, 15 Array{Float64,1}
@@ -118,6 +119,7 @@ mutable struct forcingtemporary # 3 Array{Float64,1}
     TForcing::Array{Float64,1}
     surfaceState::Array{Float64,1}
     saltConcForcing::Array{Float64,1}
+    uppermostGridCell::Array{Int64,1}
 end
 
 mutable struct forcingdata # 6 Array{float64,1}
@@ -127,6 +129,7 @@ mutable struct forcingdata # 6 Array{float64,1}
     TForcing::Array{Float64,1}
     surfaceState::Array{Float64,1}
     saltConcForcing::Array{Float64,1}
+    uppermostGridCell::Array{Int64,1}
 end
 
 struct sediment # 4 Array{int64,1}

@@ -23,7 +23,7 @@ savename = "testlocation1_50k"
 # forcing variables are currently set in the focing class
 # initialize forcing
 forcing = Forcing_inundationHistory.forcing();
-forcing = forcing.initialize(forcing, 3, 2, 69.945, -134.0, -50000.0)
+forcing = forcing.initialize(forcing, 666, 2, 69.945, -134.0, -50000.0)
 forcing = forcing.load_forcing_from_mat(forcing);
 
 #initialize out
@@ -72,7 +72,7 @@ BOTTOM.PREVIOUS.IA_NEXT = [];
 CURRENT = TOP.NEXT;
 while ~isequal(CURRENT, BOTTOM)
     global CURRENT
-    CURRENT.initialize_statvar(CURRENT);
+    CURRENT.initialize_statvar(CURRENT); # this uses this.TEMP.T_ub but it's still zero
     CURRENT = CURRENT.NEXT;
 end
 
